@@ -210,3 +210,25 @@ def test_assistant_kannada(netrix, monkeypatch):
     c.post("/assistant", json={"message": "How many?"})
     assert assistant.KANNADA_RULE not in FakeOllama.seen[-1]["messages"][0]["content"]
     srv.shutdown()
+
+
+def test_status_numbers_and_part_stats(netrix):
+    c = netrix
+    train_toy(c, "stats_t", backbone="resnet18")
+    s = c.get("/objects/stats_t/status").json()
+    assert s["state"] == "ready" and s["threshold"] > 0 and s["rotations"] == 1 and s["strictness"] == 1.0
+    lo, hi = s["unsure_band"]
+    assert lo < s["threshold"] < hi
+    empty = c.get("/objects/stats_t/stats").json()
+    assert empty["total"] == 0 and empty["last"] is None and empty["avg_ms"] == 0.0
+    rng = np.random.default_rng(21)
+    for im in (part(rng)[0], part(rng, scratch=True)[0], part(rng, scratch=True)[0]):
+        c.post("/objects/stats_t/predict", files={"file": ("p.png", png(im))})
+    c.post("/objects/stats_t/predict?log=false", files={"file": ("p.png", png(part(rng)[0]))})  # not logged: not counted
+    st = c.get("/objects/stats_t/stats").json()
+    assert st["total"] == 3 and sum(st["counts"].values()) == 3 and st["counts"]["defective"] >= 1
+    assert st["defect_rate"] == round(st["counts"]["defective"] / 3, 4)
+    assert 0 < st["avg_ms"] <= st["max_ms"] and st["last"] is not None
+    server.models.clear()                         # numbers also come straight from the saved file
+    s2 = c.get("/objects/stats_t/status").json()
+    assert s2["threshold"] == s["threshold"] and s2["unsure_band"] == s["unsure_band"]

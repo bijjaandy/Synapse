@@ -206,11 +206,28 @@ def train(name: str, files: list[UploadFile] = File(...), backbone: str = Form("
     return {"name": name, "n_images": n, "backbone": backbone, "rotations": rotations, "state": "queued"}
 
 
+def model_numbers(name):
+    """Line, unsure band, rotations and strictness of a ready model: from memory, else read once from its file."""
+    with state_lock:
+        m = models.get(name)
+    if m is not None:
+        return {"threshold": round(m.thr, 4), "unsure_band": [round(m.low, 4), round(m.high, 4)],
+                "rotations": m.rotations, "strictness": m.strictness}
+    path = MODELS / f"{name}.pt"
+    if not path.exists():
+        return {}
+    d = torch.load(path)
+    k = float(d.get("strictness", 1.0))
+    return {"threshold": round(d["thr"] / k, 4), "unsure_band": [round(d["low"] / k, 4), round(d["high"] / k, 4)],
+            "rotations": d.get("rotations", 1), "strictness": k}
+
+
 @app.get("/objects/{name}/status")
 def status(name: str):
     check_name(name)
     if name in jobs:
-        return {"name": name, **jobs[name], "strictness": current_strictness(name)}
+        extra = model_numbers(name) if jobs[name].get("state") == "ready" else {"strictness": current_strictness(name)}
+        return {"name": name, **jobs[name], **extra}
     path = MODELS / f"{name}.pt"
     if path.exists():
         with state_lock:
@@ -220,8 +237,22 @@ def status(name: str):
                 "n_images": len(list(good.glob("*.png"))) if good.exists() else None,
                 "trained_at": path.stat().st_mtime,
                 "needs_retrain": m.needs_retrain if m else saved_needs_retrain(path),
-                "strictness": m.strictness if m else saved_strictness(path)}
+                **model_numbers(name)}
     raise HTTPException(404, f"unknown object '{name}'")
+
+
+@app.get("/objects/{name}/stats")
+def object_stats(name: str):
+    """This part's inspection log in numbers: counts, defect rate, average / slowest ms, last inspected."""
+    check_name(name)
+    rows = inspection_log.rows(name)
+    counts = {k: sum(r["label"] == k for r in rows) for k in ("good", "defective", "unsure", "retake")}
+    n = len(rows)
+    return {"name": name, "total": n, "counts": counts,
+            "defect_rate": round(counts["defective"] / n, 4) if n else 0.0,
+            "avg_ms": round(sum(r["ms"] for r in rows) / n, 1) if n else 0.0,
+            "max_ms": round(max((r["ms"] for r in rows), default=0.0), 1),
+            "last": max((r["ts"] for r in rows), default=None)}
 
 
 @app.get("/objects/{name}/good/{index}.jpg")

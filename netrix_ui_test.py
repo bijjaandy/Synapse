@@ -223,6 +223,20 @@ def main():
                 import urllib.request, json as _json
                 saved = _json.load(urllib.request.urlopen(f"http://localhost:8000/objects/{PART}/status"))["strictness"]
                 print("-> label:", card.locator(".strictness label").inner_text().replace("\n", " "), "| backend:", saved)
+            # glass detail panel: click opens, Esc closes and focus returns to the card; hover opens; click outside closes
+            card.locator("h4").click()
+            page.wait_for_selector(".glass-panel dl", timeout=15000); page.wait_for_timeout(600)
+            rows = dict(t.split("\n", 1) for t in page.locator(".glass-stats dl > div").all_inner_texts() if "\n" in t)
+            print("glass panel:", page.inner_text("#glass-title"), "| inspections", rows.get("Inspections"), "| line", rows.get("Decision line"),
+                  "| band", rows.get("Unsure band"), "| photo shown:", page.locator(".glass-main img").count() + page.locator(".glass-placeholder").count() > 0,
+                  "| counts:", page.inner_text(".glass-counts").replace("\n", " "))
+            page.screenshot(path=str(SHOTS / "glass_panel.png"))
+            page.keyboard.press("Escape"); page.wait_for_timeout(500)
+            print("after Esc: panel", page.locator(".glass-panel").count(), "| focus back on card:", page.evaluate("document.activeElement?.dataset?.detail === '1'"))
+            card.hover(); page.wait_for_timeout(1200)
+            print("hover opens:", page.locator(".glass-panel").count())
+            page.mouse.click(5, 5); page.wait_for_timeout(500)
+            print("click outside closes:", page.locator(".glass-panel").count() == 0)
             page.screenshot(path=str(SHOTS / "objects.png"))
 
         def history():
