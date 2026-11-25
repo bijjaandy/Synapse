@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { AnimatePresence, animate as animateMotion, motion, useMotionValue, useMotionValueEvent, useReducedMotion, useScroll, useSpring, useTransform, type MotionValue } from "framer-motion";
 import useSWR from "swr";
 import { EvaluationPanel, JudgePanel, LimitationsPanel, ObjectLibraryPanel, ProjectTargetsStrip, RuntimeStatusPanel } from "@/components/inspection-panels";
@@ -223,14 +224,15 @@ function SectionHeading({ index, title, description, dark = false }: { index: st
   </div>;
 }
 
-export type LabView = "dashboard" | "evaluation" | "objects" | "history" | "summary";
+export type LabView = "dashboard" | "train" | "inspect" | "evaluation" | "objects" | "history" | "summary";
 const VIEW_SECTIONS: Record<LabView, string[]> = {
-  dashboard: ["train", "inspect"], evaluation: ["tools"], objects: ["tools"], history: ["history"], summary: ["spec"],
+  dashboard: ["train", "inspect"], train: ["train"], inspect: ["inspect"], evaluation: ["tools"], objects: ["tools"], history: ["history"], summary: ["spec"],
 };
 
 /** Without `view`: the original single long page. With `view`: only that page's sections, inside the Netrix IQ app shell. */
 export default function InspectionLab({ view: page }: { view?: LabView } = {}) {
   const show = (section: string) => !page || VIEW_SECTIONS[page].includes(section);
+  const router = useRouter();
   const [dark, setDark] = useState(false);
   const [online, setOnline] = useState(true);
   const [activeSection, setActiveSection] = useState("top");
@@ -387,6 +389,7 @@ export default function InspectionLab({ view: page }: { view?: LabView } = {}) {
     setSelectedObject(part);
     setUntrainedPart(null);
     setInspectionError(null);
+    if (page && !show("train")) { router.push("/train"); return; }  // part saved in localStorage "netrix.part" by setSelectedObject
     document.getElementById("train")?.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "start" });
   }
 
@@ -398,7 +401,7 @@ export default function InspectionLab({ view: page }: { view?: LabView } = {}) {
     mutateShift();
   }
 
-  const header = <header className="topbar"><a href="#top" className="brand" aria-label="Sightline home"><span className="brand-mark"><ScanLine size={18} /></span><span>{projectName}<small>{pageCopy.brandDescriptor}</small></span></a><nav className={menuOpen ? "nav-open" : ""} aria-label="Main navigation">{navItems.map((item) => { const tab = "tab" in item ? item.tab : undefined; const key = tab ?? item.section; return <a key={item.label} className={activeNav === key ? "active" : ""} aria-current={activeNav === key ? "location" : undefined} href={item.href} onClick={() => { setMenuOpen(false); if (tab) setToolsTab(tab); }}>{item.label}</a>; })}</nav><div className="top-actions"><span className={`sample-badge topbar-demo ${backendOk === false ? "is-down" : "is-live"}`}>{backendOk === undefined ? "CHECKING SERVER" : backendOk ? demoModeLabel : "SERVER OFFLINE"}</span><OfflineIndicator online={online} /><button className="icon-button theme-button" onClick={() => setDark((value) => !value)} aria-label={dark ? "Use light appearance" : "Use dark appearance"}>{dark ? <Sun size={16} /> : <Moon size={16} />}</button><button className="mobile-menu icon-button" onClick={() => setMenuOpen((value) => !value)} aria-label="Toggle navigation">{menuOpen ? <X size={18} /> : <Menu size={18} />}</button><MagneticLink className="nav-cta" href="#inspect">{pageCopy.openInspector} <ArrowRight size={14} /></MagneticLink></div></header>;
+  const header = <header className="topbar"><a href="#top" className="brand" aria-label="Netrix IQ home"><span className="brand-mark"><ScanLine size={18} /></span><span>{projectName}<small>{pageCopy.brandDescriptor}</small></span></a><nav className={menuOpen ? "nav-open" : ""} aria-label="Main navigation">{navItems.map((item) => { const tab = "tab" in item ? item.tab : undefined; const key = tab ?? item.section; return <a key={item.label} className={activeNav === key ? "active" : ""} aria-current={activeNav === key ? "location" : undefined} href={item.href} onClick={() => { setMenuOpen(false); if (tab) setToolsTab(tab); }}>{item.label}</a>; })}</nav><div className="top-actions"><span className={`sample-badge topbar-demo ${backendOk === false ? "is-down" : "is-live"}`}>{backendOk === undefined ? "CHECKING SERVER" : backendOk ? demoModeLabel : "SERVER OFFLINE"}</span><OfflineIndicator online={online} /><button className="icon-button theme-button" onClick={() => setDark((value) => !value)} aria-label={dark ? "Use light appearance" : "Use dark appearance"}>{dark ? <Sun size={16} /> : <Moon size={16} />}</button><button className="mobile-menu icon-button" onClick={() => setMenuOpen((value) => !value)} aria-label="Toggle navigation">{menuOpen ? <X size={18} /> : <Menu size={18} />}</button><MagneticLink className="nav-cta" href="#inspect">{pageCopy.openInspector} <ArrowRight size={14} /></MagneticLink></div></header>;
   const Shell = page ? "div" : "main";
   return <Shell className={`${dark ? "lab-shell dark-mode" : "lab-shell"}${page ? ` lab-view lab-view-${page}` : ""}`}>
     {!page && header}
@@ -432,6 +435,7 @@ export default function InspectionLab({ view: page }: { view?: LabView } = {}) {
           <div className="progress-block"><div className="progress-top"><RollingTimer elapsedText={elapsedText} /><span className="budget-label"><motion.i animate={elapsed === trainingBudgetSeconds && !reducedMotion ? { scaleY: [1, 1.35, 1] } : { scaleY: 1 }} transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }} />10:00 <small>{pageCopy.timeLimit}</small></span></div><div className="progress-track"><motion.div className="progress-fill" style={{ scaleX: progressScale }} /></div></div>
           <button className="button-orange" onClick={startTraining} disabled={!canTrain}>{trainState === "learning" ? <><LoaderCircle size={15} /> {pageCopy.learningButton}</> : trainState === "done" ? <>{pageCopy.runAgain} <ArrowRight size={14} /></> : <>{pageCopy.startLearning} <ArrowRight size={14} /></>}</button>
         </div>
+        {page === "train" && trainState === "done" && <a className="button-primary go-inspect" href="/inspect">Go to Inspect <ArrowRight size={14} /></a>}
         {trainLog.length > 0 && <pre className="train-log" aria-live="polite">{trainLog.join("\n")}</pre>}
       </div>
       <div className="console-note"><CircleHelp size={14} /><span>{pageCopy.trainingConsoleNote}</span><span className={`${mono} console-note-right`}>{pageCopy.noGpuFootnote}</span></div>

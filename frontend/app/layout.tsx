@@ -4,7 +4,7 @@ import type { Metadata, Viewport } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'Sightline: offline visual inspection',
+  title: 'Netrix IQ: offline visual inspection',
   description: 'A local-first visual inspection system that learns normal appearance from good parts and highlights differences in new photos.',
   generator: 'v0.app',
   icons: {

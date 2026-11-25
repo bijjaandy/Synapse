@@ -47,7 +47,7 @@ def main():
             page.goto(f"{URL}/login", wait_until="networkidle")
             page.locator(".login-role", has_text={"operator": "Line Operator", "inspector": "QC Inspector",
                                                   "supervisor": "Shift Supervisor"}[role]).locator(".login-demo").click()
-            page.wait_for_url("**/dashboard", timeout=15000)
+            page.wait_for_url("**/inspect", timeout=15000)
             page.wait_for_selector(".netrix-user", timeout=10000)
             print(f"{role}: nav =", page.locator(".netrix-topbar nav a").all_inner_texts(), "| user:", page.inner_text(".netrix-user").replace("\n", " / "))
 
@@ -84,6 +84,8 @@ def main():
 
         def dashboard():
             page.goto(f"{URL}/dashboard", wait_until="networkidle")
+            print("old /dashboard ->", page.url)
+            page.goto(f"{URL}/train", wait_until="networkidle")
             page.fill("#custom-part", PART)
             page.click(".custom-part button")
             page.set_input_files("#train input[type=file]", [str(f) for f in train_files])
@@ -91,6 +93,9 @@ def main():
             page.click(".button-orange")
             page.wait_for_selector(".status-icon.done", timeout=180_000)
             print("trained:", " | ".join(page.inner_text(".train-status").split("\n")))
+            print("train page: inspect section", page.locator("#inspect").count(), "| go-to-inspect link", page.locator(".go-inspect").count())
+            page.click(".go-inspect"); page.wait_for_url("**/inspect", timeout=15000); page.wait_for_selector("#object-select")
+            print("inspect page: train section", page.locator("#train").count(), "| nav:", page.locator(".netrix-topbar nav a").all_inner_texts())
             page.select_option("#object-select", PART)
             for name in ("good", "scratched", "scratched"):
                 page.set_input_files("#inspect input[type=file]", str(tmp / f"inspect_{name}.png"))

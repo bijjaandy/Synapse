@@ -24,7 +24,7 @@ const ROLES: { role: Role; title: string; who: string; problem: string; does: st
 
 export default function LoginScreen() {
   const router = useRouter();
-  const next = useSearchParams()?.get("next") ?? "/dashboard";
+  const next = useSearchParams()?.get("next") ?? "/inspect";
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -39,7 +39,7 @@ export default function LoginScreen() {
     setError(null);
     try {
       await login(u, p);
-      router.replace(next.startsWith("/") ? next : "/dashboard");
+      router.replace(next.startsWith("/") ? next : "/inspect");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
       setBusy(false);

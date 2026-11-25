@@ -38,7 +38,7 @@ export const layerCopy = [
 
 export const steps = [
   { number: "01", title: "Show good photos", text: "Add clear photos of parts that meet your quality standard. No defective examples needed." },
-  { number: "02", title: "It learns normal appearance", text: "Sightline builds a reference for shape, surface and texture from your good parts." },
+  { number: "02", title: "It learns normal appearance", text: "Netrix IQ builds a reference for shape, surface and texture from your good parts." },
   { number: "03", title: "A new photo arrives", text: "Inspect a part using the same camera position and lighting as your training photos." },
   { number: "04", title: "Differences are highlighted", text: "See a Good or Defective result and review the areas that differ from the reference." },
 ];
@@ -157,7 +157,7 @@ export const pageCopy = {
   referenceImageNumber: "IMAGE 01 / 05",
   goodReference: "GOOD REFERENCE",
   trainingTitle: "Teach a new part.",
-  trainingDescription: "Start with good examples. Sightline learns the normal surface and shape.",
+  trainingDescription: "Start with good examples. Netrix IQ learns the normal surface and shape.",
   localConsole: "LOCAL CONSOLE",
   trainingSetup: "Training setup",
   trainingSetupDescription: "Choose an object and add its good reference photos.",

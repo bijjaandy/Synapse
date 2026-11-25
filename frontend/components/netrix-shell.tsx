@@ -8,7 +8,8 @@ import { LogOut, ShieldAlert } from "lucide-react";
 import { checkHealth, checkSession, logout, type Role, type Session } from "@/lib/api";
 
 export const PAGES: { href: string; label: string; roles: Role[] }[] = [
-  { href: "/dashboard", label: "Dashboard", roles: ["operator", "inspector", "supervisor"] },
+  { href: "/train", label: "Train", roles: ["operator", "inspector", "supervisor"] },
+  { href: "/inspect", label: "Inspect", roles: ["operator", "inspector", "supervisor"] },
   { href: "/evaluation", label: "Evaluation", roles: ["inspector", "supervisor"] },
   { href: "/objects", label: "Object library", roles: ["operator", "inspector", "supervisor"] },
   { href: "/history", label: "History", roles: ["operator", "inspector", "supervisor"] },
@@ -25,7 +26,7 @@ export function BrandMark({ small = false }: { small?: boolean }) {
 /** Logged-in pages: top bar with the pages this role may open; sends visitors without a session to /login. */
 export function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const path = usePathname() ?? "/dashboard";
+  const path = usePathname() ?? "/inspect";
   const [session, setSession] = useState<Session | null | undefined>(undefined);
   const { data: serverOk } = useSWR("backend-health", checkHealth, { refreshInterval: 5000 });
 
@@ -52,7 +53,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     </header>
     {session === undefined ? <div className="netrix-wait" role="status">Checking your login…</div>
       : !session ? <div className="netrix-wait" role="status">Taking you to the login page…</div>
-      : !allowed ? <div className="netrix-denied" role="alert"><ShieldAlert size={22} /><h2>{session.role_name} logins can’t open this page.</h2><p>{page?.label} is for {page?.roles.map((r) => ({ operator: "Operators", inspector: "QC Inspectors", supervisor: "Supervisors" })[r]).join(", ")}.</p><Link href="/dashboard" className="button-primary">Go to the dashboard</Link></div>
+      : !allowed ? <div className="netrix-denied" role="alert"><ShieldAlert size={22} /><h2>{session.role_name} logins can’t open this page.</h2><p>{page?.label} is for {page?.roles.map((r) => ({ operator: "Operators", inspector: "QC Inspectors", supervisor: "Supervisors" })[r]).join(", ")}.</p><Link href="/inspect" className="button-primary">Go to Inspect</Link></div>
       : children}
   </div>;
 }
