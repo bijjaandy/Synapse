@@ -66,7 +66,7 @@ export const askPrompt = (id: number) => `Explain inspection #${id}: why did it 
 
 /** "Ask AI why" for a logged inspection. QC inspectors / supervisors go to Evaluation (?ask=id); operators can't open
  *  Evaluation, but /assistant doesn't need a role, so they get the answer right here. */
-export function AskAiButton({ inspectionId }: { inspectionId: number }) {
+export function AskAiButton({ inspectionId, compact = false }: { inspectionId: number; compact?: boolean }) {
   const [lang] = useLang();
   const voice = useVoice();
   const [role, setRole] = useState<string | null>(null);
@@ -74,15 +74,15 @@ export function AskAiButton({ inspectionId }: { inspectionId: number }) {
   const [busy, setBusy] = useState(false);
   useEffect(() => { setRole(loadSession()?.role ?? null); setAnswer(null); }, [inspectionId]);
   if (role === "inspector" || role === "supervisor")
-    return <a className="layers-toggle ask-ai" href={`/evaluation?ask=${inspectionId}`}><Bot size={13} /> Ask AI why</a>;
-  return <div className="ask-ai-inline">
-    <button type="button" className="layers-toggle ask-ai" disabled={busy} onClick={async () => {
+    return <a className={compact ? "tool-button ask-ai" : "layers-toggle ask-ai"} href={`/evaluation?ask=${inspectionId}`} title="Ask AI why (opens Evaluation)" aria-label="Ask AI why"><Bot size={compact ? 15 : 13} />{compact ? null : " Ask AI why"}</a>;
+  return <div className={`ask-ai-inline ${compact ? "compact" : ""}`}>
+    <button type="button" className={compact ? "tool-button ask-ai" : "layers-toggle ask-ai"} title="Ask AI why" aria-label="Ask AI why" disabled={busy} onClick={async () => {
       setBusy(true);
       try { const a = (await askAssistant(askPrompt(inspectionId), [], lang)).answer; setAnswer(a); voice.sayAnswer(a); }
       catch (cause) { setAnswer(cause instanceof Error ? cause.message : String(cause)); }
       finally { setBusy(false); }
-    }}>{busy ? <LoaderCircle size={13} className="spin" /> : <Bot size={13} />} Ask AI why</button>
-    {answer && <p className="ask-ai-answer">{answer}</p>}
+    }}>{busy ? <LoaderCircle size={13} className="spin" /> : <Bot size={compact ? 15 : 13} />}{compact ? null : " Ask AI why"}</button>
+    {answer && <div className="ask-ai-popover"><p className="ask-ai-answer">{answer}</p><button type="button" className="ask-ai-close" aria-label="Close the answer" onClick={() => { setAnswer(null); voice.stop(); }}>×</button></div>}
     {voice.speaking && <button type="button" className="layers-toggle stop-speaking" onClick={voice.stop}><Square size={11} /> Stop</button>}
   </div>;
 }

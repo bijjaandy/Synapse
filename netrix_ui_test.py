@@ -131,6 +131,7 @@ def main():
             page.click(".lang-switch button:has-text('EN')"); page.wait_for_timeout(300)
             print("back to:", page.evaluate("localStorage.getItem('netrix.lang')"), "| kn word shown:", page.locator(".verdict-kn").count())
             # conveyor mode with Chromium's fake camera: switch on, use the manual "Inspect now", check the tally
+            page.click(".input-tab-conveyor")  # inputs are tabs now: Upload | Webcam | Conveyor
             page.click(".live-cam-inspect .cam-start")
             page.wait_for_selector(".live-cam-inspect video", timeout=10000); page.wait_for_timeout(2000)
             page.locator(".conveyor-switch input").check()
@@ -145,7 +146,7 @@ def main():
             page.locator(".live-cam-inspect").screenshot(path=str(SHOTS / "conveyor.png"))
             page.locator(".conveyor-switch input").uncheck()
             page.click(".live-cam-inspect >> text=Stop")
-            page.click("text=2D heatmap"); page.wait_for_timeout(500); print("2D legend:", page.locator(".heat-legend").count())
+            page.click(".input-tab-upload"); page.click(".view-tab-2d"); page.wait_for_timeout(500); print("2D legend:", page.locator(".heat-legend").count())
             cg = page.locator(".compare-good-toggle input")
             print("compare toggle:", cg.count(), end=" ")
             if cg.count():
@@ -154,9 +155,9 @@ def main():
                       page.evaluate("[...document.querySelectorAll('.compare-good img')].map(i => i.complete && i.naturalWidth > 0)"))
                 page.locator(".result-panel").screenshot(path=str(SHOTS / "compare_good.png"))
                 page.click(".compare-good-toggle")
-            page.click("text=Layer map"); page.wait_for_timeout(1500); print("layer sheets:", page.locator(".layer-sheet").count(), "images:", page.locator(".layer-sheet img").count())
+            page.click(".view-tab-layers"); page.wait_for_timeout(1500); print("layer sheets:", page.locator(".layer-sheet").count(), "images:", page.locator(".layer-sheet img").count())
             page.click("text=Side by side") if page.locator("text=Side by side").count() else None
-            page.click("text=3D view")
+            page.click(".view-tab-3d")
             page.screenshot(path=str(SHOTS / "dashboard.png"))
 
         def evaluation():

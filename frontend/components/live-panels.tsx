@@ -54,8 +54,9 @@ export function InspectionStage3D({ result, photo, onSequenceDone }: { result: I
 }
 
 /** Webcam. mode "train": capture good samples with the "enough photos?" meter. mode "inspect": inspect the current frame. */
-export function WebcamCapture({ mode, onCaptured, onInspect, disabled }: {
+export function WebcamCapture({ mode, onCaptured, onInspect, disabled, conveyor = false }: {
   mode: "train" | "inspect";
+  conveyor?: boolean;                    // inspect mode: show conveyor mode (auto-inspect when a part arrives)
   onCaptured?: (files: File[]) => void;
   onInspect?: (file: File) => unknown;   // may return the InspectionResult (used by conveyor mode's tally)
   disabled?: boolean;
@@ -151,7 +152,7 @@ export function WebcamCapture({ mode, onCaptured, onInspect, disabled }: {
         </> : <button type="button" onClick={inspectFrame} disabled={disabled}><ScanLine size={14} /> Inspect this frame</button>}
         <button type="button" onClick={stop} aria-label="Stop the webcam"><CameraOff size={14} /> Stop</button>
       </div>
-      {mode === "inspect" && <ConveyorControls video={video} grab={grab} onInspect={onInspect} disabled={disabled} />}
+      {mode === "inspect" && conveyor && <ConveyorControls video={video} grab={grab} onInspect={onInspect} disabled={disabled} />}
     </>}
     {error && <p className="cam-error" role="alert">{error}</p>}
   </div>;

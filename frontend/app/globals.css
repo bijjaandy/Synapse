@@ -973,3 +973,44 @@ body { font-family:var(--font-ui); font-size:16px; }
 .kn-sentence { margin: .5rem 0 0; font-size: 1rem; color: var(--cream); }
 .kn-hint { display: flex; align-items: center; gap: .5rem; margin: .5rem 0 0; padding: .45rem .7rem; border-radius: 10px; font-size: .8rem; color: var(--cream); background: color-mix(in srgb, #B8860B 30%, transparent); }
 .kn-hint button { margin-left: auto; border: 0; background: transparent; color: inherit; cursor: pointer; font-size: 1rem; }
+
+/* ---------- Inspect section, less crowded (v2) ---------- */
+.inspect-workspace.inspect-v2 { grid-template-columns: minmax(230px, 280px) minmax(0, 1fr); gap: 28px; border: 0; background: transparent; align-items: start; }
+.inspect-v2 .inspect-controls { display: grid; gap: 16px; border: 0; border-radius: 18px; padding: 20px; background: var(--panel, color-mix(in srgb, white 45%, var(--cream))); }
+.inspect-v2 .inspect-controls .run-inspection { margin-top: 0; }
+.inspect-v2 .select-wrap { margin-top: 6px; }
+.input-tabs { display: grid; grid-template-columns: repeat(3, 1fr); padding: 3px; border-radius: 12px; background: color-mix(in srgb, var(--sage) 18%, transparent); }
+.input-tab { display: inline-flex; align-items: center; justify-content: center; gap: 5px; border: 0; border-radius: 9px; padding: 8px 4px; background: transparent; color: var(--forest); font-size: 12px; cursor: pointer; }
+.input-tab.active { background: var(--cream); box-shadow: 0 1px 3px #0002; font-weight: 600; }
+.input-pane .inspect-upload { margin-top: 0; }
+.input-pane .live-cam { margin: 0; }
+.inspect-v2 .result-panel { border-radius: 18px; padding: 22px 24px 24px; display: grid; gap: 14px; align-content: start; }
+.inspect-v2 .result-panel > .result-id { opacity: .7; font-size: 11px; }
+.inspect-v2 .result-summary { border-bottom: 0; padding: 0; gap: 16px; flex-wrap: wrap; }
+.view-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
+.view-tabs { display: inline-flex; gap: 4px; }
+.view-toolbar { position: relative; display: inline-flex; align-items: center; gap: 6px; }
+.tool-button { display: inline-grid; place-items: center; width: 34px; height: 34px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--mist) 40%, transparent); background: transparent; color: var(--cream); cursor: pointer; text-decoration: none; }
+.tool-button.active { background: color-mix(in srgb, var(--sage) 50%, var(--forest)); }
+.tool-button:disabled { opacity: .6; cursor: wait; }
+.lang-quick-text { font-size: 11px; font-weight: 700; }
+.ask-ai-inline.compact { position: static; }
+.ask-ai-inline.compact .ask-ai { margin-top: 0; }
+.ask-ai-popover { position: absolute; right: 0; top: calc(100% + 8px); z-index: 20; width: min(380px, 80vw); padding: 12px 34px 12px 14px; border-radius: 14px; background: color-mix(in srgb, var(--forest) 92%, black); border: 1px solid color-mix(in srgb, var(--mist) 35%, transparent); box-shadow: 0 10px 30px #0005; }
+.ask-ai-popover .ask-ai-answer { margin: 0; }
+.ask-ai-close { position: absolute; top: 6px; right: 8px; border: 0; background: transparent; color: var(--cream); font-size: 18px; cursor: pointer; }
+.ask-ai-inline .stop-speaking { margin-top: 6px; }
+.result-details { display: grid; gap: 10px; padding: 14px 16px; border-radius: 14px; background: color-mix(in srgb, var(--mist) 10%, transparent); }
+.result-details .result-explanation { margin: 0; }
+.result-details .verdict-detail { margin: 0; }
+.result-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+.result-actions .feedback-row, .result-actions .feedback-done, .result-actions .compare-good-toggle { margin: 0; }
+@media (max-width: 900px) {
+  .inspect-workspace.inspect-v2 { grid-template-columns: minmax(0, 1fr); gap: 18px; }
+  .inspect-v2 .result-panel { padding: 16px; }
+}
+/* the result panel's grid column must shrink to the screen (it grew to its widest child on phones) */
+.inspect-v2 .result-panel { grid-template-columns: minmax(0, 1fr); min-width: 0; }
+.inspect-v2 .result-panel > * { min-width: 0; }
+.inspect-v2 .result-metrics { flex-wrap: wrap; }
+@media (max-width: 520px) { .stage3d-hint { display: none; } }
