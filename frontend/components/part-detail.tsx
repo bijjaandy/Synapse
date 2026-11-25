@@ -85,7 +85,7 @@ export function PartDetailPanel({ id, name, open, onClose }: { id: string; name:
       <div className="glass-body">
         <div className="glass-photos">
           <div className="glass-main">{missing[main] ? <div className="glass-placeholder"><ImageOff size={28} /><span>No training photo</span></div>
-            : <img src={photo(id, main)} alt={`${name}: training photo ${main + 1}`} onError={() => setMissing((m) => ({ ...m, [main]: true }))} />}</div>
+            : <motion.img layoutId={main === 0 ? `photo-${id}` : undefined} src={photo(id, main)} alt={`${name}: training photo ${main + 1}`} onError={() => setMissing((m) => ({ ...m, [main]: true }))} />}</div>
           <div className="glass-thumbs">{[0, 1, 2, 3].filter((i) => !missing[i]).map((i) => <button key={i} type="button" className={main === i ? "active" : ""} aria-label={`Show training photo ${i + 1}`} aria-pressed={main === i} onClick={() => setMain(i)}>
             <img src={photo(id, i)} alt="" onError={() => setMissing((m) => ({ ...m, [i]: true }))} /></button>)}</div>
         </div>

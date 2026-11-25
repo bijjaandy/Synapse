@@ -1,4 +1,6 @@
 "use client";
+import { EmptyLibraryArt, ProductGallery } from "@/components/product-gallery";
+import { motion, useReducedMotion } from "framer-motion";
 import { toast } from "@/lib/toast";
 
 import { useEffect, useRef, useState } from "react";
@@ -90,6 +92,12 @@ export function ProductLibrary({ statuses, loading, error, active, onChanged }: 
   const [detail, setDetail] = useState<{ id: string; name: string } | null>(null);
   const opener = useRef<HTMLElement | null>(null);
   const hoverTimer = useRef<number | null>(null);
+  const lastScroll = useRef(0);
+  useEffect(() => {
+    const onScroll = () => { lastScroll.current = performance.now(); if (hoverTimer.current) { window.clearTimeout(hoverTimer.current); hoverTimer.current = null; } };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
   const canHover = () => typeof window !== "undefined" && window.matchMedia("(hover: hover) and (pointer: fine)").matches;
   const openDetail = (el: HTMLElement, id: string, name: string) => { opener.current = el; setDetail({ id, name }); };
   const closeDetail = () => { setDetail(null); const el = opener.current; window.setTimeout(() => el?.focus(), 0); };
@@ -98,7 +106,15 @@ export function ProductLibrary({ statuses, loading, error, active, onChanged }: 
     tabIndex: 0, "aria-haspopup": "dialog" as const, "aria-label": `${p.objectName}: open details`, "data-detail": "1",
     onClick: (event: React.MouseEvent<HTMLElement>) => { if (!fromControl(event.target)) openDetail(event.currentTarget, p.objectId, p.objectName); },
     onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => { if (event.key === "Enter" && event.target === event.currentTarget) { event.preventDefault(); openDetail(event.currentTarget, p.objectId, p.objectName); } },
-    onMouseEnter: (event: React.MouseEvent<HTMLElement>) => { if (!canHover() || detail) return; const el = event.currentTarget; hoverTimer.current = window.setTimeout(() => openDetail(el, p.objectId, p.objectName), 700); },
+    // hover opens only after real pointer movement on the card that then rests 700 ms; a page scrolling under a still
+    // mouse (which also "enters" cards) or a press/click never opens it
+    onMouseMove: (event: React.MouseEvent<HTMLElement>) => {
+      if (!canHover() || detail || performance.now() - lastScroll.current < 500) return;
+      const el = event.currentTarget;
+      if (hoverTimer.current) window.clearTimeout(hoverTimer.current);
+      hoverTimer.current = window.setTimeout(() => openDetail(el, p.objectId, p.objectName), 700);
+    },
+    onMouseDown: () => { if (hoverTimer.current) window.clearTimeout(hoverTimer.current); hoverTimer.current = null; },
     onMouseLeave: () => { if (hoverTimer.current) window.clearTimeout(hoverTimer.current); hoverTimer.current = null; },
   };
 
@@ -117,14 +133,29 @@ export function ProductLibrary({ statuses, loading, error, active, onChanged }: 
   }
 
   const products = statuses.filter((p) => p.status !== "Not trained");  // real products: trained, training or failed
+  const reduced = useReducedMotion() ?? false;
+  const [view, setViewState] = useState<"grid" | "gallery">("grid");
+  const [addOpen, setAddOpen] = useState(false);
+  useEffect(() => {  // gallery on desktop; grid on phones or with reduced motion; a remembered choice wins
+    let saved: string | null = null;
+    try { saved = window.localStorage.getItem("netrix.libraryView"); } catch { /* private mode */ }
+    setViewState(saved === "grid" || saved === "gallery" ? saved : window.innerWidth >= 640 && !reduced ? "gallery" : "grid");
+  }, [reduced]);
+  const setView = (v: "grid" | "gallery") => { setViewState(v); try { window.localStorage.setItem("netrix.libraryView", v); } catch { /* ignore */ } };
   return <div className="object-library-panel product-library" role="tabpanel" id="objects-panel" aria-labelledby="objects-tab" hidden={!active}>
     <div className="panel-intro"><div><h3>Your products</h3><p>Every product this laptop has learned. Click a trained one for its photos and numbers.</p></div>
       {canManage && <><input ref={importInput} type="file" accept=".zip,application/zip" className="sr-only" aria-label="Import product zip" onChange={(e) => { const f = e.target.files?.[0]; if (f) doImport(f); e.target.value = ""; }} />
         <button type="button" className="export-button import-product" onClick={() => importInput.current?.click()}><Upload size={14} /> Import product</button></>}</div>
+    <div className="libview-switch" role="group" aria-label="Show products as">{(["grid", "gallery"] as const).map((v) => <button key={v} type="button" className={`libview-${v} ${view === v ? "active" : ""}`} aria-pressed={view === v} onClick={() => setView(v)}>{view === v && <motion.span layoutId="libview-pill" className="seg-pill" transition={{ type: "spring", stiffness: 420, damping: 34 }} />}<span>{v === "grid" ? "Grid" : "Gallery"}</span></button>)}</div>
     {note && <p className="library-note" role="status">{note}{importConflict && <> <button type="button" className="remove-part-yes" onClick={() => doImport(importConflict, true)}>Replace it</button></>}</p>}
     {loading ? <div className="object-status-grid" aria-label="Loading products">{[0, 1, 2].map((i) => <div className="object-status-card status-skeleton" key={i}><span /><span /><span /></div>)}</div>
       : error ? <div className="evaluation-state error-state" role="alert"><AlertCircle size={17} /><p>Couldn&apos;t load the products. Is the inspection server running?</p></div>
-      : <div className="object-status-grid">
+      : !products.length ? <div className="library-empty-state"><EmptyLibraryArt /><h3>No products yet</h3><AddProductCard onCreated={() => onChanged?.()} startOpen={false} /></div>
+      : view === "gallery" ? <motion.div key="gallery" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: reduced ? 0.15 : 0.3 }}>
+        {addOpen && <div className="gallery-add-form"><AddProductCard startOpen onCreated={() => { setAddOpen(false); onChanged?.(); }} /><button type="button" className="remove-part-no" onClick={() => setAddOpen(false)}>Close</button></div>}
+        <ProductGallery products={products} dimmed={!!detail} onAdd={() => setAddOpen(true)} onOpen={(p, el) => openDetail(el, p.objectId, p.objectName)} />
+      </motion.div>
+      : <motion.div key="grid" className="object-status-grid" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: reduced ? 0.15 : 0.3 }}>
         <AddProductCard onCreated={() => onChanged?.()} />
         {products.map((p) => <article key={p.objectId} className={`object-status-card product-card ${p.status === "Trained" ? "has-detail" : ""}`} {...cardProps(p)}>
           <Thumb id={p.objectId} name={p.objectName} />
@@ -141,7 +172,7 @@ export function ProductLibrary({ statuses, loading, error, active, onChanged }: 
             {p.status !== "Training" && <RemovePart id={p.objectId} name={p.objectName} onRemoved={onChanged} />}
           </div>}
         </article>)}
-      </div>}
+      </motion.div>}
     {!loading && !error && products.length === 0 && <p className="library-empty">No products yet. Add your first product and train it from about 20 photos of good parts.</p>}
     <details className="benchmark-parts">
       <summary><ChevronDown size={14} /> Benchmark parts (MVTec AD), used to measure accuracy</summary>

@@ -34,6 +34,12 @@ def main():
         except Exception as e:
             failures.append(name)
             print(f"FAILED: {type(e).__name__}: {str(e).splitlines()[0]}")
+            for line in [l for l in str(e).splitlines()[1:] if "intercepts" in l or "waiting for" in l][-3:]:
+                print("   ", line.strip()[:200])
+            try:
+                if page.locator(".train-live").count(): print("    train card:", page.inner_text(".train-live")[:200].replace(chr(10), " | "))
+                if page.locator(".glass-panel").count(): print("    a glass panel is open")
+            except Exception: pass
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless="--headed" not in sys.argv,
@@ -86,6 +92,7 @@ def main():
             page.wait_for_selector(".netrix-denied", timeout=10000)
             print("operator on /summary:", page.inner_text(".netrix-denied").split("\n")[0])
             page.goto(f"{URL}/objects", wait_until="networkidle")
+            page.wait_for_selector(".libview-grid"); page.click(".libview-grid")  # grid view: cards with the strictness control
             page.wait_for_selector(".object-status-card", timeout=10000); page.wait_for_timeout(1000)
             print("operator strictness: read-only", page.locator(".strictness-readonly").count(), "| sliders", page.locator(".strictness input").count())
 
@@ -94,6 +101,7 @@ def main():
             print("old /dashboard ->", page.url)
             # new product through the Object library's "+ Add new product", which leads to /train with it selected
             page.goto(f"{URL}/objects", wait_until="networkidle")
+            page.wait_for_selector(".libview-grid"); page.click(".libview-grid")  # gallery is the default on desktop
             page.click(".add-product-card")
             page.fill("#new-product-name", PRODUCT); page.fill("#new-product-sku", "UT-01")
             page.click(".add-product-submit")
@@ -234,6 +242,7 @@ def main():
 
         def objects():
             page.goto(f"{URL}/objects", wait_until="networkidle")
+            page.wait_for_selector(".libview-grid"); page.click(".libview-grid"); page.wait_for_timeout(400)
             print("library: add card", page.locator(".add-product-card").count(), "| benchmark section", page.locator("details.benchmark-parts").count(),
                   "| empty note", page.locator(".library-empty").count(), "| products:", page.locator(".product-card h4").all_inner_texts())
             card = page.locator(".object-status-card", has_text=PRODUCT)  # cards show the display name
@@ -248,6 +257,8 @@ def main():
                 print("-> label:", card.locator(".strictness label").inner_text().replace("\n", " "), "| backend:", saved)
                 print("   toast:", page.evaluate("(window.__netrixToasts || []).slice(-1)"))
             # glass detail panel: click opens, Esc closes and focus returns to the card; hover opens; click outside closes
+            try: page.wait_for_selector(".toast", state="detached", timeout=8000)  # a toast over the card would delay the click
+            except Exception: pass
             card.locator("h4").click()
             page.wait_for_selector(".glass-panel dl", timeout=15000); page.wait_for_timeout(600)
             rows = dict(t.split("\n", 1) for t in page.locator(".glass-stats dl > div").all_inner_texts() if "\n" in t)
@@ -257,12 +268,33 @@ def main():
             page.screenshot(path=str(SHOTS / "glass_panel.png"))
             page.keyboard.press("Escape"); page.wait_for_selector(".glass-panel", state="detached", timeout=5000)  # after its closing animation
             print("after Esc: panel", page.locator(".glass-panel").count(), "| focus back on card:", page.evaluate("document.activeElement?.dataset?.detail === '1'"))
-            page.mouse.move(5, 5); page.wait_for_timeout(200); card.hover(); page.wait_for_timeout(1200)  # enter from outside
+            page.mouse.move(5, 5); page.wait_for_timeout(200); card.hover(); page.wait_for_timeout(600)  # enter from outside (hover may scroll first)
+            bb = card.bounding_box(); page.mouse.move(bb["x"] + bb["width"] / 2 + 4, bb["y"] + 40, steps=3); page.wait_for_timeout(1200)  # a small real movement, then rest
             print("hover opens:", page.locator(".glass-panel").count())
             page.mouse.click(5, 5)
             try: page.wait_for_selector(".glass-panel", state="detached", timeout=5000)  # after its closing animation
             except Exception: pass
             print("click outside closes:", page.locator(".glass-panel").count() == 0)
+            # 3D backstage gallery: keys, drag, Enter opens the glass panel (shared photo), Esc closes
+            page.click(".libview-gallery"); page.wait_for_selector(".gallery-card"); page.wait_for_timeout(700)
+            act = lambda: page.get_attribute(".gallery-card.active", "aria-label")
+            print("gallery: cards", page.locator(".gallery-card").count(), "| listbox:", page.get_attribute(".gallery-stage", "role"), "| centre:", act())
+            page.locator(".gallery-card.active").focus(); page.keyboard.press("ArrowRight"); page.wait_for_timeout(700)
+            print("   ArrowRight ->", act())
+            box = page.locator(".gallery-stage").bounding_box()
+            page.mouse.move(box["x"] + box["width"] / 2, box["y"] + 200); page.mouse.down()
+            page.mouse.move(box["x"] + box["width"] / 2 + 260, box["y"] + 200, steps=12); page.mouse.up(); page.wait_for_timeout(900)
+            print("   drag right ->", act())
+            page.click(".gallery-nav.next"); page.wait_for_timeout(700)
+            if page.get_attribute(".gallery-card.active", "data-index") == "0": page.click(".gallery-nav.next"); page.wait_for_timeout(700)
+            page.locator(".gallery-card.active").focus(); page.keyboard.press("Enter")
+            page.wait_for_selector(".glass-panel dl", timeout=15000); page.wait_for_timeout(500)
+            print("   Enter opens:", page.inner_text("#glass-title"), "| row dimmed:", page.locator(".gallery.dimmed").count())
+            page.screenshot(path=str(SHOTS / "gallery_detail.png"))
+            page.keyboard.press("Escape"); page.wait_for_selector(".glass-panel", state="detached", timeout=5000)
+            print("   Esc closes, focus back:", page.evaluate("document.activeElement?.classList?.contains('gallery-card')"))
+            page.screenshot(path=str(SHOTS / "gallery.png"))
+            page.click(".libview-grid")
             page.screenshot(path=str(SHOTS / "objects.png"))
 
         def history():
