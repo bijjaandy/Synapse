@@ -1,4 +1,5 @@
 "use client";
+import { PageIcon } from "@/components/page-icons";
 import { Toaster } from "@/components/toaster";
 import { motion } from "framer-motion";
 
@@ -72,5 +73,5 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 }
 
 export function PageIntro({ title, text }: { title: string; text: string }) {
-  return <div className="netrix-intro"><h1>{title}</h1><p>{text}</p></div>;
+  return <div className="netrix-intro"><PageIcon name={title} /><div><h1>{title}</h1><p>{text}</p></div></div>;
 }

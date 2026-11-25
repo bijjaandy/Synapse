@@ -60,7 +60,7 @@ export default function LoginScreen() {
       <h1>Who uses Netrix IQ</h1>
       <p className="login-lede">Factories make thousands of good parts for every bad one, so there are no defect photos to train on. Netrix IQ learns only from good parts and runs on the laptop at the line, with no internet. Three people use it:</p>
       <div className="login-roles">{ROLES.map((r, i) =>
-        <motion.article key={r.role} className="login-role" initial={reducedMotion ? false : { opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: reducedMotion ? 0 : 0.08 * i }}>
+        <motion.article key={r.role} className="login-role tilt" onMouseMove={(e) => { if (reducedMotion) return; const b = e.currentTarget.getBoundingClientRect(); e.currentTarget.style.setProperty("--ry", `${((e.clientX - b.left) / b.width - 0.5) * 12}deg`); e.currentTarget.style.setProperty("--rx", `${-((e.clientY - b.top) / b.height - 0.5) * 12}deg`); }} onMouseLeave={(e) => { e.currentTarget.style.setProperty("--rx", "0deg"); e.currentTarget.style.setProperty("--ry", "0deg"); }} initial={reducedMotion ? false : { opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: reducedMotion ? 0 : 0.08 * i }}>
           <div className="login-role-head"><span className="login-role-icon">{r.icon}</span><h2>{r.title}</h2></div>
           <p className="login-role-who">{r.who}</p>
           <p className="login-role-problem"><b>Problem:</b> {r.problem}</p>

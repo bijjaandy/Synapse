@@ -1254,3 +1254,57 @@ body { font-family:var(--font-ui); font-size:16px; }
   .shimmer-block, .train-row.skeleton { animation: none; }
   .button-primary, .export-button, .layers-toggle, .tool-button, .run-inspection, .train-drop-more button, .new-product-row, .remove-part-btn, .remove-part-yes, .remove-part-no, .input-tab, .folder-picker, .netrix-logout { transition: none; transform: none !important; }
 }
+
+/* ---------- gradients and graphics ---------- */
+/* app background: very soft mesh (cream -> mist -> sage) with a faint blueprint grid; background images only, no layers */
+.netrix-app { background-color: #F1E9D2;
+  background-image:
+    linear-gradient(color-mix(in srgb, #6B8E7B 7%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, #6B8E7B 7%, transparent) 1px, transparent 1px),
+    radial-gradient(60% 50% at 12% 8%, color-mix(in srgb, #B7C9B1 45%, transparent), transparent 70%),
+    radial-gradient(50% 45% at 92% 18%, color-mix(in srgb, #6B8E7B 16%, transparent), transparent 70%),
+    radial-gradient(70% 60% at 70% 100%, color-mix(in srgb, #B7C9B1 35%, transparent), transparent 70%);
+  background-size: 32px 32px, 32px 32px, 100% 100%, 100% 100%, 100% 100%;
+  background-attachment: fixed; }
+/* cards: soft gradient surface + 1px gradient border (sage -> transparent) */
+.netrix-card, .train-step-card, .object-status-card:not(.add-product-card), .evaluation-panel, .inspect-v2 .inspect-controls, .verify-item {
+  border: 1px solid transparent !important;
+  background: linear-gradient(160deg, color-mix(in srgb, white 62%, #F1E9D2), color-mix(in srgb, #B7C9B1 22%, #F1E9D2)) padding-box,
+              linear-gradient(140deg, color-mix(in srgb, #6B8E7B 55%, transparent), transparent 70%) border-box !important; }
+/* primary buttons: forest -> deep sage gradient (cream text stays above 4.5:1) with a sheen on hover */
+.button-primary, .run-inspection, .train-start { background: linear-gradient(135deg, #243B35, #35594d) !important; color: #F1E9D2 !important; position: relative; overflow: hidden; isolation: isolate; }
+.button-primary::after, .run-inspection::after, .train-start::after { content: ""; position: absolute; inset: 0; z-index: -1; background: linear-gradient(110deg, transparent 30%, #ffffff2e 50%, transparent 70%); transform: translateX(-110%); transition: transform .45s ease; }
+.button-primary:hover::after, .run-inspection:hover::after, .train-start:hover::after { transform: translateX(110%); }
+.train-done-actions .go-inspect { background: linear-gradient(135deg, #F1E9D2, #dfe8d9) !important; color: #243B35 !important; }
+/* page header icons */
+.netrix-intro { display: flex; align-items: center; gap: 14px; }
+.page-icon { flex: none; width: 46px; height: 46px; padding: 9px; border-radius: 14px; color: #243B35;
+  background: linear-gradient(135deg, color-mix(in srgb, #B7C9B1 70%, white), color-mix(in srgb, #6B8E7B 35%, #F1E9D2)); box-shadow: inset 0 1px 0 #fff8, 0 4px 12px #243b351a; }
+.page-icon svg { width: 100%; height: 100%; display: block; }
+.train-head-title { display: flex; align-items: center; gap: 14px; }
+/* summary sparkline */
+.sparkline-card { display: grid; gap: 8px; }
+.sparkline-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.sparkline-head h2 { margin: 0; font-size: 1.05rem; } .sparkline-head span { font-size: .8rem; opacity: .75; }
+.sparkline { width: 100%; height: 70px; display: block; }
+.sparkline-axis { display: flex; justify-content: space-between; font-size: .72rem; opacity: .65; }
+.mix-bar span { transform-origin: left; }
+/* login role cards: gradient icon tiles + tilt */
+.login-role.tilt { transform: perspective(800px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)); transition: transform .2s ease, box-shadow .2s ease; will-change: transform; }
+.login-role.tilt:hover { box-shadow: 0 14px 32px #243b3522; }
+.login-role-icon { background: linear-gradient(135deg, #243B35, #6B8E7B) !important; color: #F1E9D2 !important; box-shadow: inset 0 1px 0 #ffffff33; }
+@media (prefers-reduced-motion: reduce) { .login-role.tilt { transform: none; transition: none; } .button-primary::after, .run-inspection::after, .train-start::after { display: none; } }
+
+/* performance: no backdrop blur on toasts (it stalls pages with a WebGL canvas behind them),
+   and the app background on its own fixed layer instead of background-attachment: fixed (no repaint per scroll) */
+.toast { backdrop-filter: none !important; -webkit-backdrop-filter: none !important;
+  background: linear-gradient(135deg, color-mix(in srgb, #F1E9D2 96%, white), color-mix(in srgb, #B7C9B1 30%, #F1E9D2)) !important; }
+.netrix-app { position: relative; isolation: isolate; background-image: none !important; background-color: transparent !important; }
+.netrix-app::before { content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none; background-color: #F1E9D2;
+  background-image:
+    linear-gradient(color-mix(in srgb, #6B8E7B 7%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, #6B8E7B 7%, transparent) 1px, transparent 1px),
+    radial-gradient(60% 50% at 12% 8%, color-mix(in srgb, #B7C9B1 45%, transparent), transparent 70%),
+    radial-gradient(50% 45% at 92% 18%, color-mix(in srgb, #6B8E7B 16%, transparent), transparent 70%),
+    radial-gradient(70% 60% at 70% 100%, color-mix(in srgb, #B7C9B1 35%, transparent), transparent 70%);
+  background-size: 32px 32px, 32px 32px, 100% 100%, 100% 100%, 100% 100%; }

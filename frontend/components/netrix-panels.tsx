@@ -6,7 +6,7 @@ import useSWR from "swr";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Bot, Check, CircleAlert, LoaderCircle, Send, ShieldCheck, Square, X } from "lucide-react";
 import { askAssistant, assistantStatus, loadSession, getSummary, getVerifyQueue, heatmapUrl, photoUrl, verifyInspection,
-         type ChatMessage, type QueueItem, type Summary } from "@/lib/api";
+         type ChatMessage, type QueueItem, type Summary, getInspectionTimes } from "@/lib/api";
 import { objectCategories } from "@/config/content";
 import { useLang, useVoice } from "@/lib/voice";
 
@@ -145,6 +145,48 @@ export function AssistantChat() {
 
 // ---------- summary ----------
 
+/** Number that counts up from 0 (or from its last value) when it changes; reduced motion shows it at once. */
+function CountUp({ value }: { value: number }) {
+  const reduced = useReducedMotion() ?? false;
+  const [shown, setShown] = useState(reduced ? value : 0);
+  const from = useRef(0);
+  useEffect(() => {
+    if (reduced) { setShown(value); from.current = value; return; }
+    const start = from.current, t0 = performance.now(), dur = 600;
+    let raf = 0;
+    const step = (t: number) => {
+      const k = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - k, 3);
+      setShown(Math.round(start + (value - start) * e));
+      if (k < 1) raf = requestAnimationFrame(step); else from.current = value;
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [value, reduced]);
+  return <>{shown}</>;
+}
+
+/** Inspections per hour over the last 24 hours: a tiny SVG line, no chart library. */
+function Sparkline() {
+  const { data: times = [] } = useSWR("inspection-times-24h", () => getInspectionTimes(24), { refreshInterval: 30000 });
+  const reduced = useReducedMotion() ?? false;
+  const now = Date.now() / 1000;
+  const buckets = Array.from({ length: 24 }, (_, i) => times.filter((t) => t > now - (24 - i) * 3600 && t <= now - (23 - i) * 3600).length);
+  const max = Math.max(1, ...buckets);
+  const pts = buckets.map((n, i) => [(i / 23) * 300, 54 - (n / max) * 46] as const);
+  const line = pts.map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
+  const peak = buckets.indexOf(max);
+  return <section className="netrix-card sparkline-card" aria-label="Inspections per hour, last 24 hours">
+    <div className="sparkline-head"><h2>Inspections per hour</h2><span>last 24 h · {times.length} total · busiest {max}/h</span></div>
+    <svg viewBox="0 0 300 60" className="sparkline" preserveAspectRatio="none" role="img" aria-label={`Per hour, oldest first: ${buckets.join(", ")}`}>
+      <defs><linearGradient id="spark-fill" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="#6B8E7B" stopOpacity=".35" /><stop offset="100%" stopColor="#6B8E7B" stopOpacity="0" /></linearGradient></defs>
+      <path d={`${line} L300,60 L0,60 Z`} fill="url(#spark-fill)" />
+      <motion.path d={line} fill="none" stroke="#243B35" strokeWidth="2" vectorEffect="non-scaling-stroke" initial={reduced ? false : { pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: reduced ? 0 : 0.45 }} />
+      {times.length > 0 && <circle cx={pts[peak][0]} cy={pts[peak][1]} r="3" fill="#E0B341" />}
+    </svg>
+    <div className="sparkline-axis"><span>24 h ago</span><span>now</span></div>
+  </section>;
+}
+
 export function SummaryView() {
   const { data: s, error, isLoading } = useSWR<Summary>("summary", getSummary, { refreshInterval: 10000 });
   const reducedMotion = useReducedMotion() ?? false;
@@ -157,11 +199,12 @@ export function SummaryView() {
     [s.verification.pending, "waiting for verification", ""],
   ];
   return <div className="summary-view">
-    <div className="summary-kpis">{kpis.map(([n, label, sub], i) => <motion.div key={label} className="netrix-card kpi" initial={reducedMotion ? false : { opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: reducedMotion ? 0 : i * 0.06 }}><strong>{n}</strong><span>{label}</span>{sub && <small>{sub}</small>}</motion.div>)}</div>
+    <div className="summary-kpis">{kpis.map(([n, label, sub], i) => <motion.div key={label} className="netrix-card kpi" initial={reducedMotion ? false : { opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: reducedMotion ? 0 : i * 0.06 }}><strong>{typeof n === "number" ? <CountUp value={n} /> : n}</strong><span>{label}</span>{sub && <small>{sub}</small>}</motion.div>)}</div>
+    <Sparkline />
     <div className="summary-grid">
       <section className="netrix-card"><h2>By part</h2>
         {!s.by_object.length ? <p className="netrix-muted">No inspections yet.</p> : <table className="summary-table"><thead><tr><th>Part</th><th>Total</th><th>Result mix</th><th>Defective</th></tr></thead><tbody>
-          {s.by_object.map((o) => <tr key={o.object}><td>{o.display_name ?? partName(o.object)}</td><td>{o.total}</td><td><div className="mix-bar" role="img" aria-label={`${o.good} good, ${o.defective} defective, ${o.unsure} unsure, ${o.retake} retakes`}>{(["good", "defective", "unsure", "retake"] as const).map((k) => o[k] ? <span key={k} className={`mix-${k}`} style={{ width: `${(o[k] / o.total) * 100}%` }} /> : null)}</div></td><td>{o.defective} ({((o.defective / o.total) * 100).toFixed(0)}%)</td></tr>)}
+          {s.by_object.map((o) => <tr key={o.object}><td>{o.display_name ?? partName(o.object)}</td><td>{o.total}</td><td><div className="mix-bar" role="img" aria-label={`${o.good} good, ${o.defective} defective, ${o.unsure} unsure, ${o.retake} retakes`}>{(["good", "defective", "unsure", "retake"] as const).map((k) => o[k] ? <motion.span key={k} className={`mix-${k}`} style={{ width: `${(o[k] / o.total) * 100}%`, originX: 0 }} initial={reducedMotion ? false : { scaleX: 0 }} animate={{ scaleX: 1 }} transition={{ duration: reducedMotion ? 0 : 0.45, ease: [0.22, 1, 0.36, 1] }} /> : null)}</div></td><td>{o.defective} ({((o.defective / o.total) * 100).toFixed(0)}%)</td></tr>)}
         </tbody></table>}
         <p className="mix-legend"><span className="mix-good" /> good <span className="mix-defective" /> defective <span className="mix-unsure" /> unsure <span className="mix-retake" /> retake</p>
       </section>

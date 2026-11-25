@@ -404,3 +404,9 @@ export async function deleteObject(name: string, purgeLog = false) {
 }
 
 export const goodPhotoUrl = (objectId: string, index: number) => `${API_URL}/objects/${encodeURIComponent(objectId)}/good/${index}.jpg`;
+
+/** Timestamps (seconds) of the inspections in the last `hours` hours, for the per-hour sparkline. */
+export async function getInspectionTimes(hours = 24): Promise<number[]> {
+  const rows = await call<{ ts: number }[]>(`/log?hours=${hours}&limit=1000`);
+  return rows.map((r) => r.ts);
+}

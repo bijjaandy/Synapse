@@ -275,6 +275,8 @@ def main():
             login_as("supervisor")
             page.goto(f"{URL}/summary", wait_until="networkidle")
             page.wait_for_selector(".summary-kpis", timeout=30000)  # slower while another part trains
+            page.wait_for_timeout(900)  # KPI numbers count up
+            print("sparkline:", page.inner_text(".sparkline-head").replace(chr(10), " | ") if page.locator(".sparkline-head").count() else "-", "| page icon:", page.locator(".page-icon").count())
             print("kpis:", " | ".join(page.locator(".kpi").all_inner_texts()).replace("\n", " "))
             page.screenshot(path=str(SHOTS / "summary.png"), full_page=True)
 

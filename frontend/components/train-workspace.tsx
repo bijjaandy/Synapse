@@ -1,4 +1,5 @@
 "use client";
+import { PageIcon } from "@/components/page-icons";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
@@ -201,8 +202,8 @@ export default function TrainWorkspace() {
       <motion.section key={selected ?? "none"} className="train-main" aria-label={`Train ${name}`} {...fade} transition={{ duration: reduced ? 0.15 : 0.25 }}>
         {!selected ? <p className="train-none">Pick a product on the left, or create one.</p> : <>
           <header className="train-head">
-            <div><h1 id="train-product-name">{name}</h1>
-              <p>{product?.sku ? <span className="train-sku">SKU {product.sku}</span> : null}{trained ? <span>last trained {relative(product?.lastTrainedAt ?? null)} · {product?.backbone ?? "model"}</span> : <span>not trained yet</span>}</p></div>
+            <div className="train-head-title"><PageIcon name="Train" /><div><h1 id="train-product-name">{name}</h1>
+              <p>{product?.sku ? <span className="train-sku">SKU {product.sku}</span> : null}{trained ? <span>last trained {relative(product?.lastTrainedAt ?? null)} · {product?.backbone ?? "model"}</span> : <span>not trained yet</span>}</p></div></div>
             <div className="train-head-right"><span className={`status-chip ${WORD_CLASS[statusWord(product)]}`}>{statusWord(product)}</span><Link href="/objects" className="train-edit">Edit</Link></div>
           </header>
 
