@@ -71,7 +71,10 @@ export type TrainStatus = {
   backbone: string | null;
   trainSeconds: number | null;
   error: string | null;
+  autoReport: AutoEstimate[] | null;   // only when the backbone was "auto": the timing of each model tried
 };
+
+export type AutoEstimate = { backbone: string; est_train_s: number; est_ms: number; fits: boolean };
 
 export type MeterStatus = { session?: string; photos: number; percent: number; ready: boolean; hint: string; novelty: number[] };
 export type ShiftReport = {
@@ -120,7 +123,7 @@ export async function trainObject(objectId: string, files: File[], options: { ba
 }
 
 type RawStatus = { state: string; started?: number; train_s?: number; log?: string[]; backbone?: string; error?: string;
-                   auto_report?: { backbone: string; est_train_s: number }[]; n_images?: number | null; trained_at?: number };
+                   auto_report?: AutoEstimate[]; n_images?: number | null; trained_at?: number };
 
 export async function getTrainStatus(jobId: string): Promise<TrainStatus> {
   const s = await call<RawStatus>(`/objects/${jobId}/status`);
@@ -132,7 +135,7 @@ export async function getTrainStatus(jobId: string): Promise<TrainStatus> {
   const expected = Math.max(20, (estimate ?? 30) * 2);
   const progress = state === "done" ? 100 : Math.min(95, Math.round((elapsedSec / expected) * 100));
   return { state, elapsedSec, progress, log: s.log ?? [], backbone: s.backbone && s.backbone !== "auto" ? s.backbone : null,
-           trainSeconds: s.train_s ?? null, error: s.error ?? null };
+           trainSeconds: s.train_s ?? null, error: s.error ?? null, autoReport: s.auto_report ?? null };
 }
 
 // ---------- inspection ----------
@@ -189,8 +192,20 @@ export async function markGood(objectId: string, file: File, inspectionId: numbe
 
 type RawLogRow = { id: number; ts: number; object: string; label: string; score: number; threshold: number; ms: number; reasons: string; corrected: number };
 
-export async function getHistory(): Promise<InspectionRecord[]> {
-  const rows = await call<RawLogRow[]>("/log?limit=100");
+// filters shared by the history table, shift strip, CSV and report links. hours null = all time.
+export type LogFilter = { object?: string | null; hours?: number | null };
+const ALL_TIME_HOURS = 8760;  // the backend's maximum; /report.html falls back to 12 h when hours is left out
+
+function query(filter: LogFilter, extra: Record<string, string> = {}) {
+  const q = new URLSearchParams(extra);
+  if (filter.object) q.set("object", filter.object);
+  if (filter.hours != null) q.set("hours", String(filter.hours));
+  const text = q.toString();
+  return text ? `?${text}` : "";
+}
+
+export async function getHistory(object?: string | null): Promise<InspectionRecord[]> {
+  const rows = await call<RawLogRow[]>(`/log${query({ object }, { limit: "100" })}`);
   return rows.map((r) => ({
     id: `#${String(r.id).padStart(4, "0")}`,
     inspectionId: r.id,
@@ -207,11 +222,18 @@ export async function getHistory(): Promise<InspectionRecord[]> {
   }));
 }
 
-export async function getShiftReport(hours = 12): Promise<ShiftReport> {
-  return call<ShiftReport>(`/report?hours=${hours}`);
+/** Parts that appear anywhere in the log, for the history part filter. */
+export async function getLoggedParts(): Promise<string[]> {
+  const rows = await call<RawLogRow[]>("/log?limit=1000");
+  return [...new Set(rows.map((r) => r.object))].sort();
 }
-export const reportPageUrl = (hours = 12) => `${API_URL}/report.html?hours=${hours}`;
-export const logCsvUrl = () => `${API_URL}/log.csv`;
+
+export async function getShiftReport(filter: LogFilter = { hours: 12 }): Promise<ShiftReport> {
+  return call<ShiftReport>(`/report${query(filter)}`);
+}
+export const reportPageUrl = (filter: LogFilter = { hours: 12 }) =>
+  `${API_URL}/report.html${query({ ...filter, hours: filter.hours ?? ALL_TIME_HOURS })}`;
+export const logCsvUrl = (filter: LogFilter = {}) => `${API_URL}/log.csv${query(filter)}`;
 
 // ---------- objects ----------
 

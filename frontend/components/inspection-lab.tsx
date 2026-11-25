@@ -6,7 +6,7 @@ import { AnimatePresence, animate as animateMotion, motion, useMotionValue, useM
 import useSWR from "swr";
 import { EvaluationPanel, LimitationsPanel, ObjectLibraryPanel, ProjectTargetsStrip, RuntimeStatusPanel } from "@/components/inspection-panels";
 import { Activity, ArrowDown, ArrowRight, Box, Check, ChevronDown, CircleHelp, Clock3, Download, FileImage, Gauge, Layers3, LoaderCircle, Menu, Moon, Plus, ScanLine, ShieldCheck, Sun, TriangleAlert, Upload, Wifi, WifiOff, X } from "lucide-react";
-import { API_URL, checkHealth, getHistory, getObjectStatuses, getShiftReport, getTrainStatus, inspect, logCsvUrl, markGood, reportPageUrl, trainObject, type Backbone, type InspectionRecord, type InspectionResult, type ObjectTrainingStatus, type ShiftReport, type TrainState } from "@/lib/api";
+import { API_URL, checkHealth, getHistory, getLoggedParts, getObjectStatuses, getShiftReport, getTrainStatus, inspect, logCsvUrl, markGood, reportPageUrl, trainObject, type AutoEstimate, type Backbone, type InspectionRecord, type InspectionResult, type ObjectTrainingStatus, type ShiftReport, type TrainState } from "@/lib/api";
 import { FeedbackButton, InspectionStage3D, VerdictReasons, WebcamCapture } from "@/components/live-panels";
 import { hackathonName, historyErrorCopy, historyLoadingCopy, layerCopy, layerLegendHeading, collapseLabel, demoModeLabel, explodeLabel, sampleDataLabel, limitationCopy, limitationTitle, maxTrainingFiles, minimumGoodImages, navigationItems, objectCategories, pageCopy, projectName, projectTargets, runtimeStatusCopy, runtimeTargetCopy, systemSectionDescription, systemSectionTitle, toolsSectionDescription, toolsSectionTitle, sampleImagePaths, steps, teamNamePlaceholder, trainingBudgetSeconds, trainingErrorCopy, trainingInstruction, trainingMinimumCopy } from "@/config/content";
 
@@ -253,6 +253,7 @@ export default function InspectionLab() {
   const [elapsed, setElapsed] = useState(0);
   const [trainLog, setTrainLog] = useState<string[]>([]);
   const [trainedBackbone, setTrainedBackbone] = useState<string | null>(null);
+  const [autoReport, setAutoReport] = useState<AutoEstimate[] | null>(null);
   const [backbone, setBackbone] = useState<Backbone>("auto");
   const [rotates, setRotates] = useState(false);
   const [inspectionFile, setInspectionFile] = useState<File | null>(null);
@@ -269,6 +270,9 @@ export default function InspectionLab() {
   const [showLayers, setShowLayers] = useState(false);
   const [feedbackDone, setFeedbackDone] = useState<string | null>(null);
   const [historyFilter, setHistoryFilter] = useState<string>(pageCopy.historyAll);
+  const [historyPart, setHistoryPart] = useState<string>("");          // "" = all parts
+  const [reportRange, setReportRange] = useState<string>("12");        // hours, or "all"
+  const logFilter = { object: historyPart || null, hours: reportRange === "all" ? null : Number(reportRange) };
   const [dragging, setDragging] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [inspectionError, setInspectionError] = useState<string | null>(null);
@@ -277,9 +281,10 @@ export default function InspectionLab() {
   const inspectInput = useRef<HTMLInputElement>(null);
   const currentObject = objectCategories.find((item) => item.id === selectedObject) ?? { id: selectedObject, name: selectedObject, code: "CUS" };
   const { data: backendOk } = useSWR("backend-health", checkHealth, { refreshInterval: 5000 });
-  const { data: history = [], error: historyError, isLoading: historyLoading, mutate: mutateHistory } = useSWR<InspectionRecord[]>("inspection-history", getHistory);
+  const { data: history = [], error: historyError, isLoading: historyLoading, mutate: mutateHistory } = useSWR<InspectionRecord[]>(["inspection-history", historyPart], () => getHistory(historyPart || null));
+  const { data: loggedParts = [], mutate: mutateLoggedParts } = useSWR<string[]>("logged-parts", getLoggedParts);
   const { data: objectStatuses = [], error: objectStatusError, isLoading: objectStatusesLoading, mutate: mutateObjectStatuses } = useSWR<ObjectTrainingStatus[]>("object-statuses", getObjectStatuses);
-  const { data: shift, mutate: mutateShift } = useSWR<ShiftReport>("shift-report", () => getShiftReport(12));
+  const { data: shift, mutate: mutateShift } = useSWR<ShiftReport>(["shift-report", historyPart, reportRange], () => getShiftReport(logFilter));
   const visibleHistory = useMemo(() => historyFilter === pageCopy.historyAll ? history : history.filter((item) => item.verdict === historyFilter), [history, historyFilter]);
   const elapsedText = `${String(Math.floor(elapsed / 60)).padStart(2, "0")}:${String(elapsed % 60).padStart(2, "0")}`;
   const photoUrl = useMemo(() => inspectionFile ? URL.createObjectURL(inspectionFile) : null, [inspectionFile]);
@@ -307,6 +312,7 @@ export default function InspectionLab() {
     setElapsed(0);
     setTrainLog([`Uploading ${goodFiles.length} file(s)…`]);
     setTrainedBackbone(null);
+    setAutoReport(null);
     try {
       const { jobId } = await trainObject(objectId, goodFiles, { backbone, rotations: rotates ? 8 : 1 });
       let status = await getTrainStatus(jobId);
@@ -315,11 +321,13 @@ export default function InspectionLab() {
         setTrainProgress(status.progress);
         setTrainLog(status.log);
         setTrainedBackbone(status.backbone);
+        setAutoReport(status.autoReport);
         await new Promise((resolve) => window.setTimeout(resolve, 1000));
         status = await getTrainStatus(jobId);
       }
       setTrainLog(status.log);
       setTrainedBackbone(status.backbone);
+      setAutoReport(status.autoReport);
       if (status.state === "error") throw new Error(status.error ?? trainingErrorCopy);
       setElapsed(Math.round(status.trainSeconds ?? status.elapsedSec));
       setTrainProgress(100);
@@ -343,6 +351,7 @@ export default function InspectionLab() {
       setInspectedObject(selectedObject);
       mutateHistory();
       mutateShift();
+      mutateLoggedParts();
     } catch (cause) {
       setInspectionError(cause instanceof Error ? cause.message : "Inspection could not run. Try another photo.");
     } finally {
@@ -382,7 +391,7 @@ export default function InspectionLab() {
           <label><span className={mono}>MODEL</span><select value={backbone} onChange={(event) => setBackbone(event.target.value as Backbone)} disabled={trainState === "learning"}><option value="auto">Best for this laptop (auto)</option><option value="resnet18">Fast (resnet18)</option><option value="wide_resnet50">Most accurate (wide_resnet50)</option></select></label>
           <label className="train-check"><input type="checkbox" checked={rotates} onChange={(event) => setRotates(event.target.checked)} disabled={trainState === "learning"} /><span>Part can lie at any angle (checks 8 angles, slower)</span></label>
         </div>
-        <div className="train-footer"><div className="train-status"><span className={`status-icon ${trainState}`} aria-hidden="true">{trainState === "learning" ? <LoaderCircle size={15} /> : trainState === "done" ? <Check size={15} /> : trainState === "error" ? <X size={15} /> : <Activity size={15} />}</span><div><strong>{trainState === "learning" ? pageCopy.trainingLearning : trainState === "done" ? pageCopy.trainingComplete : trainState === "error" ? pageCopy.trainingErrorTitle : pageCopy.trainingReady}</strong><span>{trainState === "learning" ? pageCopy.trainingLearningDetail(imageCount) : trainState === "done" ? `${pageCopy.trainingCompleteDetail(elapsed <= trainingBudgetSeconds ? "Within 10:00 budget" : "Over 10:00 budget")}${trainedBackbone ? ` · ${trainedBackbone}` : ""}` : trainState === "error" ? trainingError ?? trainingErrorCopy : pageCopy.trainingReadyDetail(minimumGoodImages)}</span></div></div>
+        <div className="train-footer"><div className="train-status"><span className={`status-icon ${trainState}`} aria-hidden="true">{trainState === "learning" ? <LoaderCircle size={15} /> : trainState === "done" ? <Check size={15} /> : trainState === "error" ? <X size={15} /> : <Activity size={15} />}</span><div><strong>{trainState === "learning" ? pageCopy.trainingLearning : trainState === "done" ? pageCopy.trainingComplete : trainState === "error" ? pageCopy.trainingErrorTitle : pageCopy.trainingReady}</strong><span>{trainState === "learning" ? pageCopy.trainingLearningDetail(imageCount) : trainState === "done" ? `${pageCopy.trainingCompleteDetail(elapsed <= trainingBudgetSeconds ? "Within 10:00 budget" : "Over 10:00 budget")}${trainedBackbone ? ` · ${trainedBackbone}` : ""}` : trainState === "error" ? trainingError ?? trainingErrorCopy : pageCopy.trainingReadyDetail(minimumGoodImages)}</span>{autoReport?.length && trainState !== "idle" ? <span className="train-auto">{autoSummary(autoReport, trainedBackbone)}</span> : null}</div></div>
           <div className="progress-block"><div className="progress-top"><RollingTimer elapsedText={elapsedText} /><span className="budget-label"><motion.i animate={elapsed === trainingBudgetSeconds && !reducedMotion ? { scaleY: [1, 1.35, 1] } : { scaleY: 1 }} transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }} />10:00 <small>{pageCopy.timeLimit}</small></span></div><div className="progress-track"><motion.div className="progress-fill" style={{ scaleX: progressScale }} /></div></div>
           <button className="button-orange" onClick={startTraining} disabled={!canTrain}>{trainState === "learning" ? <><LoaderCircle size={15} /> {pageCopy.learningButton}</> : trainState === "done" ? <>{pageCopy.runAgain} <ArrowRight size={14} /></> : <>{pageCopy.startLearning} <ArrowRight size={14} /></>}</button>
         </div>
@@ -427,7 +436,7 @@ export default function InspectionLab() {
       <EvaluationPanel objectId={selectedObject} objectName={currentObject.name} active={toolsTab === "evaluation"} />
       <ObjectLibraryPanel statuses={objectStatuses} loading={objectStatusesLoading} error={objectStatusError} active={toolsTab === "objects"} />
     </section>
-    <section className="history-section" id="history"><div className="history-head"><SectionHeading index="05" title={pageCopy.historyTitle} description={pageCopy.historyDescription} /><div className="history-actions"><label htmlFor="history-filter" className="sr-only">{pageCopy.historyFilter}</label><select id="history-filter" value={historyFilter} onChange={(event) => setHistoryFilter(event.target.value)}><option>{pageCopy.historyAll}</option><option>Good</option><option>Defective</option><option>Unsure</option><option>Retake</option></select><a className="export-button" href={logCsvUrl()} download><Download size={14} /> {pageCopy.historyExport}</a><a className="export-button" href={reportPageUrl(12)} target="_blank" rel="noopener noreferrer"><FileImage size={14} /> Shift report</a></div></div>
+    <section className="history-section" id="history"><div className="history-head"><SectionHeading index="05" title={pageCopy.historyTitle} description={pageCopy.historyDescription} /><div className="history-actions"><label htmlFor="history-filter" className="sr-only">{pageCopy.historyFilter}</label><select id="history-filter" value={historyFilter} onChange={(event) => setHistoryFilter(event.target.value)}><option>{pageCopy.historyAll}</option><option>Good</option><option>Defective</option><option>Unsure</option><option>Retake</option></select><label htmlFor="history-part" className="sr-only">Part</label><select id="history-part" value={historyPart} onChange={(event) => setHistoryPart(event.target.value)}><option value="">All parts</option>{[...new Set([...loggedParts, ...(historyPart ? [historyPart] : [])])].map((id) => <option key={id} value={id}>{objectCategories.find((o) => o.id === id)?.name ?? id}</option>)}</select><label htmlFor="report-range" className="sr-only">Shift report time range</label><select id="report-range" value={reportRange} onChange={(event) => setReportRange(event.target.value)}><option value="1">Last 1 h</option><option value="12">Last 12 h</option><option value="24">Last 24 h</option><option value="all">All time</option></select><a className="export-button" href={logCsvUrl(logFilter)} download><Download size={14} /> {pageCopy.historyExport}</a><a className="export-button" href={reportPageUrl(logFilter)} target="_blank" rel="noopener noreferrer"><FileImage size={14} /> Shift report</a></div></div>
       {shift && <div className="shift-strip">{[[shift.total, "inspected"], [shift.counts.good, "good"], [shift.counts.defective, "defective"], [shift.counts.unsure, "sent to a person"], [shift.counts.retake, "retakes"], [shift.operator_corrections, "corrected"]].map(([n, label]) => <div key={label as string}><strong>{n}</strong><span>{label}</span></div>)}</div>}
       <div className="history-table-wrap"><table className="history-table"><thead><tr>{pageCopy.historyColumns.map((column) => <th key={column}>{column}</th>)}</tr></thead><tbody>{historyLoading ? <tr aria-busy="true"><td colSpan={6} className="history-loading"><span className="history-skeleton" aria-hidden="true" />{historyLoadingCopy}</td></tr> : historyError ? <tr><td colSpan={6} className="history-error" role="alert">{historyErrorCopy}</td></tr> : visibleHistory.length ? <AnimatePresence initial={false} mode="popLayout">{visibleHistory.map((record, index) => <motion.tr layout key={record.id} initial={reducedMotion ? false : { opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} exit={reducedMotion ? undefined : { opacity: 0, x: 12 }} transition={{ duration: reducedMotion ? 0 : 0.4, delay: Math.min(index, 8) * 0.04, ease: [0.22, 1, 0.36, 1] }}><td><span className="history-image"><img src={record.imageUrl} alt={`${record.objectName} heatmap`} className="thumb-img" /></span><span className={`${mono} history-id`}>{record.id}</span></td><td>{record.objectName}</td><td><span className={`table-verdict ${record.verdict === "Good" ? "pass" : record.verdict.toLowerCase()}`}><i />{record.verdict}{record.corrected ? " (corrected)" : ""}</span></td><td className={mono}>{record.score.toFixed(2)} <span className="threshold-note">/ {record.threshold.toFixed(2)}</span></td><td className={mono}>{record.latencyMs} ms</td><td className={mono}>{record.inspectedAt}</td></motion.tr>)}</AnimatePresence> : <tr><td colSpan={6} className="empty-history"><FileImage size={18} /><span>{history.length ? pageCopy.historyNoMatch : "No inspections yet. Inspect a photo and it appears here."}</span></td></tr>}</tbody></table></div>
       <div className="history-foot"><span className={`${mono} muted-small`}>{pageCopy.historyRecordCount(visibleHistory.length)}</span><span className={`${mono} muted-small`}>{pageCopy.historySession}</span></div>
@@ -440,6 +449,11 @@ export default function InspectionLab() {
     <LimitationsPanel />
     <footer className="footer"><a href="#top" className="brand footer-brand"><span className="brand-mark"><ScanLine size={17} /></span><span>{projectName}<small>{pageCopy.brandDescriptor}</small></span></a><div className="footer-project-meta"><span className={mono}>{pageCopy.teamPrefix} · {teamNamePlaceholder}</span><span className={mono}>{hackathonName}</span></div><span className={`${mono} footer-version`}>{pageCopy.demoVersion}</span></footer>
   </main>;
+}
+
+/** "Auto: wide_resnet50 ~240 s / 180 ms, too slow. resnet18 ~40 s / 60 ms, chosen." */
+function autoSummary(report: AutoEstimate[], chosen: string | null) {
+  return "Auto: " + report.map((r) => `${r.backbone} ~${Math.round(r.est_train_s)} s / ${r.est_ms} ms, ${r.backbone === chosen ? (r.fits ? "chosen" : "chosen as the fastest") : r.fits ? "fits" : "too slow"}.`).join(" ");
 }
 
 const VERDICT_TEXT: Record<string, string> = { Good: "Good", Defective: "Defective", Unsure: "Unsure: send to a person", Retake: "Retake photo" };
