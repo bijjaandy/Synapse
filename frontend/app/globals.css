@@ -1400,3 +1400,16 @@ body { font-family:var(--font-ui); font-size:16px; }
 @media (prefers-reduced-motion: reduce) { .pipeline-rail { transition: none; } }
 @media (min-width: 821px) { .pipeline-text.intro p { max-width: min(52ch, 40vw); } }
 @media (min-width: 821px) { .pipeline-text.intro h1 { max-width: min(620px, 44vw); } }
+
+/* ---------- landing 3D v2 ---------- */
+.pipeline-sticky { background: #E9E4D0; }                 /* behind the canvas only while it loads; the scene draws its own gradient */
+.pipeline-canvas { z-index: 0; }
+.pipeline-rail button { display: flex; align-items: center; gap: .5rem; border: 0; background: transparent; color: inherit; font: inherit; padding: 2px 0; cursor: pointer; text-align: left; }
+.pipeline-rail button:focus-visible { outline: 2px solid var(--sage); outline-offset: 3px; border-radius: 6px; }
+.pipeline-rail li span.rail-dot { position: relative; isolation: isolate; }
+.pipeline-rail li.active span.rail-dot { background: transparent; }
+.rail-active { position: absolute; inset: -1px; border-radius: 50%; background: var(--defect); z-index: -1; box-shadow: 0 0 0 4px color-mix(in srgb, #C2571A 22%, transparent); }
+.pipeline-rail li.active span.rail-dot b { color: #fff; }
+.pipeline-rail span.rail-dot b { font-weight: 600; }
+.layer-tag { position: fixed; z-index: 5; transform: translate(10px, -50%); padding: 4px 10px; border-radius: 999px; pointer-events: none; white-space: nowrap;
+  font-size: .75rem; font-weight: 600; color: #F1E9D2; background: #243B35; box-shadow: 0 6px 16px #243b3540; }

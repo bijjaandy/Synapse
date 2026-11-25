@@ -24,6 +24,9 @@ const STAGE_TEXT = [
     text: "Learns a new part in about a minute, inspects in under a quarter of a second, and keeps every result for the shift." },
 ];
 
+const LAYER_TAGS = ["1 · The photo", "2 · Seeing in patches", "3 · Good-part memory", "4 · Comparison", "5 · The decision"];
+const i18nLayer = (i: number) => LAYER_TAGS[i] ?? "";
+
 const WORKFLOW = [
   { icon: <Camera size={20} />, title: "Show it good parts", text: "Upload 20+ photos of correctly made parts, or capture them with the webcam until the meter says enough." },
   { icon: <Cpu size={20} />, title: "It learns in about a minute", text: "It picks the best model this laptop can run within the limits, and builds its memory of good." },
@@ -53,6 +56,15 @@ export default function Landing() {
   useEffect(() => { checkSession().then((s) => setSignedIn(!!s)); }, []);
   const [progress, setProgress] = useState(0);
   const [noWebgl, setNoWebgl] = useState(false);
+  const [tag, setTag] = useState<{ i: number; x: number; y: number } | null>(null);   // hovered 3D layer
+  /** Scroll so that stage k (0 intro .. 6 outro) is in view; layers and rail steps use it. */
+  const scrollToStage = (k: number) => {
+    const el = section.current; if (!el) return;
+    const p = (k + 0.5) / STAGE_TEXT.length;
+    const top = el.getBoundingClientRect().top + window.scrollY + p * (el.offsetHeight - window.innerHeight);
+    window.scrollTo({ top, behavior: reducedMotion ? "auto" : "smooth" });
+  };
+  const scrollRef = useRef(scrollToStage); scrollRef.current = scrollToStage;
   const reducedMotion = useReducedMotion() ?? false;
 
   useEffect(() => {
@@ -62,7 +74,10 @@ export default function Landing() {
       if (!ok) { setNoWebgl(true); return; }
       const mod = await import("@/lib/pipeline3d");
       if (cancelled || !host.current) return;
-      scene.current = new mod.PipelineScene(host.current, "/images/sample-metal-part.png");
+      scene.current = new mod.PipelineScene(host.current, "/images/sample-metal-part.png", {
+        onHover: (i: number | null, x: number, y: number) => setTag(i === null ? null : { i, x, y }),
+        onPick: (i: number) => scrollRef.current(i + 1),   // layer i is stage i + 1
+      });
     })();
     return () => { cancelled = true; scene.current?.dispose(); scene.current = null; };
   }, []);
@@ -101,12 +116,17 @@ export default function Landing() {
               <span className="pipeline-kicker">{st.kicker}</span>
               {stage === 0 ? <h1>{st.title}</h1> : <h2>{st.title}</h2>}
               <p>{st.text}</p>
-              {stage === STAGE_TEXT.length - 1 && <Link href={signedIn ? "/inspect" : "/login"} className="button-primary pipeline-go">Start inspecting <ArrowRight size={15} /></Link>}
+              {stage === STAGE_TEXT.length - 1 && <motion.div initial={reducedMotion ? false : { opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: reducedMotion ? 0 : 0.55, duration: 0.4 }}>
+                <Link href={signedIn ? "/inspect" : "/login"} className="button-primary pipeline-go">Start inspecting <ArrowRight size={15} /></Link></motion.div>}
             </motion.div>
           </AnimatePresence>
         </div>
         <ol className={`pipeline-rail ${stage === 0 ? "intro-hidden" : ""}`} aria-label="Pipeline steps">{STAGE_TEXT.slice(1, 6).map((s, i) =>
-          <li key={s.kicker} className={stage === i + 1 ? "active" : stage > i + 1 ? "done" : ""}><span>{i + 1}</span>{s.kicker.split(" · ")[1]}</li>)}</ol>
+          <li key={s.kicker} className={stage === i + 1 ? "active" : stage > i + 1 ? "done" : ""}>
+            <button type="button" onClick={() => scrollToStage(i + 1)} aria-current={stage === i + 1 ? "step" : undefined} aria-label={`Go to step ${i + 1}: ${s.kicker.split(" · ")[1]}`}>
+              <span className="rail-dot">{stage === i + 1 && <motion.i layoutId="rail-active" className="rail-active" transition={reducedMotion ? { duration: 0 } : { type: "spring", stiffness: 380, damping: 30 }} />}<b>{i + 1}</b></span>{s.kicker.split(" · ")[1]}
+            </button></li>)}</ol>
+        {tag && <span className="layer-tag" style={{ left: tag.x, top: tag.y }} aria-hidden="true">{i18nLayer(tag.i)}</span>}
         <div className="pipeline-progress" aria-hidden="true"><span style={{ transform: `scaleX(${progress})` }} /></div>
         {stage === 0 && <span className="pipeline-scroll"><ArrowDown size={14} /> Scroll</span>}
       </div>
