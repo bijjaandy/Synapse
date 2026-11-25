@@ -60,6 +60,7 @@ def cleanup():
             c.execute("DELETE FROM inspections WHERE object=?", (PART,))
         for i in ids:
             (HERE / "logs" / "heatmaps" / f"{i}.png").unlink(missing_ok=True)
+            (HERE / "logs" / "photos" / f"{i}.jpg").unlink(missing_ok=True)
         print(f"cleanup: removed {PART} model/data and {len(ids)} log rows")
 
 
