@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import useSWR from "swr";
 import { LogOut, ShieldAlert } from "lucide-react";
 import { checkHealth, checkSession, logout, type Role, type Session } from "@/lib/api";
+import { useLang } from "@/lib/voice";
 
 export const PAGES: { href: string; label: string; roles: Role[] }[] = [
   { href: "/train", label: "Train", roles: ["operator", "inspector", "supervisor"] },
@@ -29,6 +30,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const path = usePathname() ?? "/inspect";
   const [session, setSession] = useState<Session | null | undefined>(undefined);
   const { data: serverOk } = useSWR("backend-health", checkHealth, { refreshInterval: 5000 });
+  const [lang, setLang] = useLang();
 
   useEffect(() => {
     checkSession().then((s) => {
@@ -46,6 +48,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {session && <nav aria-label="Pages">{PAGES.filter((p) => p.roles.includes(session.role)).map((p) =>
         <Link key={p.href} href={p.href} className={path.startsWith(p.href) ? "active" : ""} aria-current={path.startsWith(p.href) ? "page" : undefined}>{p.label}</Link>)}</nav>}
       <div className="netrix-top-actions">
+        <div className="lang-switch" role="group" aria-label="Language"><button type="button" aria-pressed={lang === "en"} className={lang === "en" ? "active" : ""} onClick={() => setLang("en")}>EN</button><span aria-hidden="true">|</span><button type="button" lang="kn" aria-pressed={lang === "kn"} className={lang === "kn" ? "active" : ""} onClick={() => setLang("kn")}>ಕನ್ನಡ</button></div>
         <span className={`netrix-server ${serverOk === false ? "down" : serverOk ? "up" : ""}`}>{serverOk === undefined ? "Checking model" : serverOk ? "Model connected" : "Server offline"}</span>
         {session && <span className="netrix-user"><strong>{session.display}</strong><small>{session.role_name}</small></span>}
         {session && <button type="button" className="netrix-logout" onClick={async () => { await logout(); router.replace("/login"); }}><LogOut size={14} /> Log out</button>}

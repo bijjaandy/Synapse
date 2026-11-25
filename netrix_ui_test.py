@@ -118,6 +118,17 @@ def main():
                 page.wait_for_selector(".verdict:not(.waiting)", timeout=30000); page.wait_for_timeout(1500)
                 print("| spoken while muted:", len(page.evaluate("window.__spoken")) - n)
                 vt.click()
+            # English / Kannada: switch, inspect, check the Kannada words, then back to English for the rest
+            page.click(".lang-switch button[lang=kn]"); page.wait_for_timeout(300)
+            n_spoken = len(page.evaluate("window.__spoken"))
+            page.set_input_files("#inspect input[type=file]", str(tmp / "inspect_scratched.png"))
+            page.wait_for_selector(".verdict-kn", timeout=30000); page.wait_for_timeout(1500)
+            kn_voice = page.evaluate("speechSynthesis.getVoices().some(v => v.lang.toLowerCase().startsWith('kn'))")
+            print("kannada: stored", page.evaluate("localStorage.getItem('netrix.lang')"), "| word:", page.inner_text(".verdict-kn"),
+                  "| sentence:", page.inner_text(".kn-sentence"), "| kn voice installed:", kn_voice,
+                  "| hint shown:", page.locator(".kn-hint").count(), "| spoken:", page.evaluate("window.__spoken").__len__() - n_spoken)
+            page.click(".lang-switch button:has-text('EN')"); page.wait_for_timeout(300)
+            print("back to:", page.evaluate("localStorage.getItem('netrix.lang')"), "| kn word shown:", page.locator(".verdict-kn").count())
             # conveyor mode with Chromium's fake camera: switch on, use the manual "Inspect now", check the tally
             page.click(".live-cam-inspect .cam-start")
             page.wait_for_selector(".live-cam-inspect video", timeout=10000); page.wait_for_timeout(2000)

@@ -30,6 +30,8 @@ Measured on MVTec AD (15 objects, CPU): training at most 68 s (limit 600 s), at 
 RULES = """You are the Netrix IQ assistant inside a factory inspection app. Answer in at most 5 short sentences.
 Use ONLY the facts and data below. If the data doesn't contain the answer, say you don't have that information.
 Never invent numbers, parts or inspection ids. When you quote a number, it must appear in the data."""
+KANNADA_RULE = "Answer in simple Kannada (ಕನ್ನಡ). Keep numbers and inspection ids as digits."
+LANGS = ("en", "kn")
 
 
 def _post(path, payload, timeout):
@@ -66,46 +68,56 @@ def build_context(summary, recent, detail=None):
     return "\n".join(lines)
 
 
-def fallback(message, summary):
+def fallback(message, summary, lang="en"):
     """Offline answers when no language model is running, so the panel never just fails."""
     m = message.lower()
     c = summary.get("counts", {})
+    pending = summary.get("verification", {}).get("pending", 0)
+    if lang == "kn":  # Kannada: the count sentence (numbers stay as digits), otherwise a short note
+        if any(w in m for w in ("how many", "total", "count", "summary", "today", "ಎಷ್ಟು", "ಒಟ್ಟು", "ಇಂದು")):
+            return (f"{summary.get('total', 0)} ತಪಾಸಣೆಗಳು ದಾಖಲಾಗಿವೆ: {c.get('good', 0)} ಸರಿ, {c.get('defective', 0)} ದೋಷಯುಕ್ತ, "
+                    f"{c.get('unsure', 0)} ಖಚಿತವಿಲ್ಲ, {c.get('retake', 0)} ಮತ್ತೆ ತೆಗೆಯಬೇಕು. "
+                    f"{pending} ವ್ಯಕ್ತಿಯ ಪರಿಶೀಲನೆಗೆ ಕಾಯುತ್ತಿವೆ.")
+        return "ಸ್ಥಳೀಯ AI ಮಾದರಿ ಚಾಲನೆಯಲ್ಲಿಲ್ಲ, ಆದ್ದರಿಂದ ನಾನು ಎಣಿಕೆಗಳಿಗೆ ಮಾತ್ರ ಉತ್ತರಿಸಬಲ್ಲೆ."
     if any(w in m for w in ("how many", "total", "count", "summary", "today")):
         return (f"{summary.get('total', 0)} inspections logged: {c.get('good', 0)} good, {c.get('defective', 0)} "
                 f"defective, {c.get('unsure', 0)} unsure, {c.get('retake', 0)} retakes. "
-                f"{summary.get('verification', {}).get('pending', 0)} are waiting for a person to verify.")
+                f"{pending} are waiting for a person to verify.")
     if any(w in m for w in ("how", "work", "what is", "explain")):
         return ("It learns only from photos of good parts, remembers their small patches, and flags any part of a "
                 "new photo that matches none of them. The line comes from good photos only.")
     return "The local AI model isn't running, so I can only answer counts and how it works."
 
 
-def ask(message, history, summary, recent, detail=None):
+def ask(message, history, summary, recent, detail=None, lang="en"):
+    lang = lang if lang in LANGS else "en"
     context = build_context(summary, recent, detail)
-    messages = [{"role": "system", "content": RULES + "\n\n" + context}]
+    rules = RULES + ("\n" + KANNADA_RULE if lang == "kn" else "")
+    messages = [{"role": "system", "content": rules + "\n\n" + context}]
     for h in history[-6:]:
         if h.get("role") in ("user", "assistant") and isinstance(h.get("content"), str):
             messages.append({"role": h["role"], "content": h["content"][:2000]})
     messages.append({"role": "user", "content": message[:2000]})
     global _down
     t0 = time.perf_counter()
-    offline_note = " (Start Ollama to get full answers.)"
+    offline_note = " (ಪೂರ್ಣ ಉತ್ತರಗಳಿಗೆ Ollama ಪ್ರಾರಂಭಿಸಿ.)" if lang == "kn" else " (Start Ollama to get full answers.)"
     if _down[0] == OLLAMA_URL and time.monotonic() < _down[1]:  # known to be off: don't wait for another refused connection
-        return {"answer": fallback(message, summary) + offline_note, "source": "offline-fallback", "model": None,
+        return {"answer": fallback(message, summary, lang) + offline_note, "source": "offline-fallback", "model": None,
                 "ms": round((time.perf_counter() - t0) * 1000)}
     try:
         r = _post("/api/chat", {"model": MODEL, "messages": messages, "stream": False,
-                                "options": {"temperature": 0.2, "num_ctx": 4096}}, TIMEOUT_S)
+                                "options": {"temperature": 0.2, "num_ctx": 4096,
+                                            "num_predict": 300}}, TIMEOUT_S)  # cap: a runaway answer can't block for 2 min
         answer = (r.get("message") or {}).get("content", "").strip() or "I couldn't produce an answer."
         return {"answer": answer, "source": "ollama", "model": MODEL, "ms": round((time.perf_counter() - t0) * 1000)}
     except urllib.error.HTTPError as e:
         note = f" (Ollama says: model '{MODEL}' isn't installed; run: ollama pull {MODEL})" if e.code == 404 else ""
-        return {"answer": fallback(message, summary) + note, "source": "offline-fallback", "model": None,
+        return {"answer": fallback(message, summary, lang) + note, "source": "offline-fallback", "model": None,
                 "ms": round((time.perf_counter() - t0) * 1000)}
     except (urllib.error.URLError, OSError, ValueError, TimeoutError) as e:
         if not isinstance(getattr(e, "reason", e), TimeoutError) and not isinstance(e, TimeoutError):
             _down = (OLLAMA_URL, time.monotonic() + DOWN_RECHECK_S)  # refused / unreachable, not just slow
-        return {"answer": fallback(message, summary) + offline_note,
+        return {"answer": fallback(message, summary, lang) + offline_note,
                 "source": "offline-fallback", "model": None, "ms": round((time.perf_counter() - t0) * 1000)}
 
 

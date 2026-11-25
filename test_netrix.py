@@ -187,3 +187,26 @@ def test_closest_good_part(netrix):
     assert c.get("/objects/closest_t/good/30.jpg").status_code == 404
     assert c.get("/objects/closest_t/good/-1.jpg").status_code == 404
     assert c.get("/objects/nope_part/good/0.jpg").status_code == 404
+
+
+def test_assistant_kannada(netrix, monkeypatch):
+    c = netrix
+    monkeypatch.setattr(assistant, "OLLAMA_URL", "http://127.0.0.1:9")    # offline: Kannada fallback sentence
+    monkeypatch.setattr(assistant, "_down", ("", 0.0))
+    r = c.post("/assistant", json={"message": "How many parts today?", "lang": "kn"}).json()
+    assert r["source"] == "offline-fallback"
+    assert r["answer"].startswith("0 ತಪಾಸಣೆಗಳು ದಾಖಲಾಗಿವೆ: 0 ಸರಿ, 0 ದೋಷಯುಕ್ತ")
+    assert "Ollama" in r["answer"] and "inspections logged" not in r["answer"]
+    r = c.post("/assistant", json={"message": "ಇಂದು ಎಷ್ಟು ಭಾಗಗಳು?", "lang": "kn"}).json()
+    assert "ತಪಾಸಣೆಗಳು" in r["answer"]
+    r = c.post("/assistant", json={"message": "How many parts today?", "lang": "xx"}).json()  # unknown -> English
+    assert "inspections logged" in r["answer"]
+
+    srv = HTTPServer(("127.0.0.1", 0), FakeOllama)                         # with a model: the Kannada rule is sent
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    monkeypatch.setattr(assistant, "OLLAMA_URL", f"http://127.0.0.1:{srv.server_address[1]}")
+    c.post("/assistant", json={"message": "How many?", "lang": "kn"})
+    assert assistant.KANNADA_RULE in FakeOllama.seen[-1]["messages"][0]["content"]
+    c.post("/assistant", json={"message": "How many?"})
+    assert assistant.KANNADA_RULE not in FakeOllama.seen[-1]["messages"][0]["content"]
+    srv.shutdown()

@@ -7,6 +7,7 @@ import { Bot, Check, CircleAlert, LoaderCircle, Send, ShieldCheck, X } from "luc
 import { askAssistant, assistantStatus, loadSession, getSummary, getVerifyQueue, heatmapUrl, photoUrl, verifyInspection,
          type ChatMessage, type QueueItem, type Summary } from "@/lib/api";
 import { objectCategories } from "@/config/content";
+import { useLang } from "@/lib/voice";
 
 const partName = (id: string) => objectCategories.find((c) => c.id === id)?.name ?? id;
 
@@ -66,6 +67,7 @@ export const askPrompt = (id: number) => `Explain inspection #${id}: why did it 
 /** "Ask AI why" for a logged inspection. QC inspectors / supervisors go to Evaluation (?ask=id); operators can't open
  *  Evaluation, but /assistant doesn't need a role, so they get the answer right here. */
 export function AskAiButton({ inspectionId }: { inspectionId: number }) {
+  const [lang] = useLang();
   const [role, setRole] = useState<string | null>(null);
   const [answer, setAnswer] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -75,7 +77,7 @@ export function AskAiButton({ inspectionId }: { inspectionId: number }) {
   return <div className="ask-ai-inline">
     <button type="button" className="layers-toggle ask-ai" disabled={busy} onClick={async () => {
       setBusy(true);
-      try { setAnswer((await askAssistant(askPrompt(inspectionId), [])).answer); }
+      try { setAnswer((await askAssistant(askPrompt(inspectionId), [], lang)).answer); }
       catch (cause) { setAnswer(cause instanceof Error ? cause.message : String(cause)); }
       finally { setBusy(false); }
     }}>{busy ? <LoaderCircle size={13} className="spin" /> : <Bot size={13} />} Ask AI why</button>
@@ -84,6 +86,7 @@ export function AskAiButton({ inspectionId }: { inspectionId: number }) {
 }
 
 export function AssistantChat() {
+  const [lang] = useLang();
   const { data: status } = useSWR("assistant-status", assistantStatus, { refreshInterval: 15000 });
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -109,7 +112,7 @@ export function AssistantChat() {
     setInput("");
     setBusy(true);
     try {
-      const r = await askAssistant(message, history);
+      const r = await askAssistant(message, history, lang);
       setMessages((m) => [...m, { role: "assistant", content: r.answer, source: r.source, model: r.model, ms: r.ms }]);
     } catch (cause) {
       setMessages((m) => [...m, { role: "assistant", content: cause instanceof Error ? cause.message : String(cause), source: "error" }]);

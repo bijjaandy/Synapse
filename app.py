@@ -525,6 +525,7 @@ def assistant_status():
 class AskBody(BaseModel):
     message: str
     history: list[dict] = []
+    lang: str = "en"   # "kn" = answer in Kannada
 
 
 @app.post("/assistant")
@@ -536,7 +537,8 @@ def assistant_ask(body: AskBody):
     rid = assistant.mentioned_id(msg)
     if rid:
         detail = inspection_log.get(rid)
-    return assistant.ask(msg, body.history, inspection_log.summary(), inspection_log.rows(limit=15), detail)
+    return assistant.ask(msg, body.history, inspection_log.summary(), inspection_log.rows(limit=15), detail,
+                         lang=body.lang)
 
 
 @app.get("/", include_in_schema=False)

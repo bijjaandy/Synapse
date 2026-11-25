@@ -350,9 +350,9 @@ export type ChatMessage = { role: "user" | "assistant"; content: string; source?
 export async function assistantStatus(): Promise<{ ollama: boolean; model: string; model_installed: boolean }> {
   return call("/assistant/status");
 }
-export async function askAssistant(message: string, history: ChatMessage[]): Promise<{ answer: string; source: string; model: string | null; ms: number }> {
+export async function askAssistant(message: string, history: ChatMessage[], lang: "en" | "kn" = "en"): Promise<{ answer: string; source: string; model: string | null; ms: number }> {
   return call("/assistant", { method: "POST", headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({ message, history: history.map(({ role, content }) => ({ role, content })) }) });
+                              body: JSON.stringify({ message, lang, history: history.map(({ role, content }) => ({ role, content })) }) });
 }
 
 export const STRICTNESS_MIN = 0.8, STRICTNESS_MAX = 1.25;
