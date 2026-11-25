@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { animate, motion, useReducedMotion } from "framer-motion";
 import { Camera, CameraOff, Check, LoaderCircle, RotateCcw, ScanLine, Trash2 } from "lucide-react";
 import { aboveLineUrl, blendUrl, distanceMapUrl, heatGradientCss, legendPos, loadImg } from "@/lib/heatmaps";
+import { whereWords } from "@/lib/voice";
 import { meterAdd, meterEnd, meterStart, type InspectionResult, type MeterStatus } from "@/lib/api";
 
 type StageApi = { show: (r: unknown, photo: Blob, onDone?: () => void) => Promise<void>; resetView: () => void; dispose: () => void };
@@ -156,7 +157,7 @@ export function WebcamCapture({ mode, onCaptured, onInspect, disabled }: {
 }
 
 export function VerdictReasons({ result }: { result: InspectionResult }) {
-  const where = (x: number, y: number) => `${y < 0.34 ? "top" : y > 0.66 ? "bottom" : "middle"} ${x < 0.34 ? "left" : x > 0.66 ? "right" : "centre"}`;
+  const where = whereWords;
   if (result.verdict === "Retake") return <div className="verdict-detail retake"><strong>Retake the photo</strong><ul>{result.reasons.map((r) => <li key={r}>{r}</li>)}</ul></div>;
   if (!result.regions.length) return null;
   return <div className="verdict-detail"><strong>Where</strong><ol>{result.regions.map((g, i) => <motion.li key={i} initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.15 * i }}>{where(g.x, g.y)}, about {Math.max(1, Math.round(g.area * 100))}% of the photo</motion.li>)}</ol></div>;

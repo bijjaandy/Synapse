@@ -5,10 +5,11 @@ import Image from "next/image";
 import { AnimatePresence, animate as animateMotion, motion, useMotionValue, useMotionValueEvent, useReducedMotion, useScroll, useSpring, useTransform, type MotionValue } from "framer-motion";
 import useSWR from "swr";
 import { EvaluationPanel, LimitationsPanel, ObjectLibraryPanel, ProjectTargetsStrip, RuntimeStatusPanel } from "@/components/inspection-panels";
-import { Activity, ArrowDown, ArrowRight, Box, Check, ChevronDown, CircleHelp, Clock3, Download, FileImage, Gauge, Layers3, LoaderCircle, Menu, Moon, Plus, ScanLine, ShieldCheck, Sun, TriangleAlert, Upload, Wifi, WifiOff, X } from "lucide-react";
+import { Activity, ArrowDown, ArrowRight, Box, Check, ChevronDown, CircleHelp, Clock3, Download, FileImage, Gauge, Layers3, LoaderCircle, Menu, Moon, Plus, ScanLine, ShieldCheck, Sun, TriangleAlert, Upload, Volume2, VolumeX, Wifi, WifiOff, X } from "lucide-react";
 import { API_URL, checkHealth, getHistory, getLoggedParts, getObjectStatuses, getShiftReport, getTrainStatus, inspect, logCsvUrl, markGood, reportPageUrl, trainObject, type AutoEstimate, type Backbone, type InspectionRecord, type InspectionResult, type ObjectTrainingStatus, type ShiftReport, type TrainState } from "@/lib/api";
 import { FeedbackButton, HeatLegend, InspectionStage3D, LayerMap, VerdictReasons, WebcamCapture } from "@/components/live-panels";
 import { heatOverlayUrl } from "@/lib/heatmaps";
+import { useVoice } from "@/lib/voice";
 import { hackathonName, historyErrorCopy, historyLoadingCopy, layerCopy, layerLegendHeading, collapseLabel, demoModeLabel, explodeLabel, sampleDataLabel, limitationCopy, limitationTitle, maxTrainingFiles, minimumGoodImages, navigationItems, objectCategories, pageCopy, projectName, projectTargets, runtimeStatusCopy, runtimeTargetCopy, systemSectionDescription, systemSectionTitle, toolsSectionDescription, toolsSectionTitle, sampleImagePaths, steps, teamNamePlaceholder, trainingBudgetSeconds, trainingErrorCopy, trainingInstruction, trainingMinimumCopy } from "@/config/content";
 
 const mono = "font-mono";
@@ -350,6 +351,8 @@ export default function InspectionLab({ view: page }: { view?: LabView } = {}) {
     }
   }
 
+  const voice = useVoice();
+
   async function runInspection(file: File) {
     setInspecting(true);
     setInspection(null);
@@ -363,6 +366,7 @@ export default function InspectionLab({ view: page }: { view?: LabView } = {}) {
       const result = await inspect(selectedObject, file);
       setInspection(result);
       setInspectedObject(selectedObject);
+      voice.announce(result);
       mutateHistory();
       mutateShift();
       mutateLoggedParts();
@@ -451,7 +455,7 @@ export default function InspectionLab({ view: page }: { view?: LabView } = {}) {
             {inspection && <VerdictReasons result={inspection} />}
             {inspection && (inspection.verdict === "Defective" || inspection.verdict === "Unsure") && <FeedbackButton onConfirm={confirmGood} done={feedbackDone} />}
             {inspection && feedbackDone && inspection.verdict === "Good" && <p className="feedback-done"><Check size={13} /> {feedbackDone}</p>}
-            <div className="comparison-title"><Eyebrow>{pageCopy.heatmapHeading}</Eyebrow><div className="view-switch" role="group" aria-label="Result view"><button type="button" className={`layers-toggle ${view === "3d" ? "active" : ""}`} aria-pressed={view === "3d"} onClick={() => setView("3d")}><Box size={14} /> 3D view</button><button type="button" className={`layers-toggle ${view === "2d" ? "active" : ""}`} aria-pressed={view === "2d"} onClick={() => setView("2d")}><ScanLine size={14} /> 2D heatmap</button><button type="button" className={`layers-toggle ${view === "layers" ? "active" : ""}`} aria-pressed={view === "layers"} onClick={() => setView("layers")}><Layers3 size={14} /> Layer map</button></div></div>
+            <div className="comparison-title"><Eyebrow>{pageCopy.heatmapHeading}</Eyebrow><div className="view-switch" role="group" aria-label="Result view"><button type="button" className={`layers-toggle ${view === "3d" ? "active" : ""}`} aria-pressed={view === "3d"} onClick={() => setView("3d")}><Box size={14} /> 3D view</button><button type="button" className={`layers-toggle ${view === "2d" ? "active" : ""}`} aria-pressed={view === "2d"} onClick={() => setView("2d")}><ScanLine size={14} /> 2D heatmap</button><button type="button" className={`layers-toggle ${view === "layers" ? "active" : ""}`} aria-pressed={view === "layers"} onClick={() => setView("layers")}><Layers3 size={14} /> Layer map</button>{voice.supported && <button type="button" className={`layers-toggle voice-toggle ${voice.on ? "active" : ""}`} aria-pressed={voice.on} aria-label={voice.on ? "Mute spoken verdicts" : "Speak verdicts aloud"} title={voice.on ? "Spoken verdicts on" : "Spoken verdicts off"} onClick={voice.toggle}>{voice.on ? <Volume2 size={14} /> : <VolumeX size={14} />} Voice</button>}</div></div>
             {!inspection || !inspectionFile ? <div className="comparison-image comparison-empty"><p>Upload a photo or use the webcam. The result appears here in 3D: defects rise out of the part and a pin lands on each one.</p></div> : view === "3d" ? <div className="comparison-image comparison-3d"><InspectionStage3D result={inspection} photo={inspectionFile} /></div> : view === "layers" ? <LayerMap result={inspection} photoUrl={photoUrl} /> : <>
               <div className="comparison-image"><CornerFrame><div className="live-square">{photoUrl && <img src={photoUrl} alt="Inspected photo" className="live-fill comparison-base" />}{heatOverlay && <img src={heatOverlay} alt="Heatmap of areas that differ from the good parts" className="live-fill heat-overlay" style={{ opacity: heatOpacity / 100 }} />}{showOutline && inspection.regions.map((r, i) => <span key={i} className="region-ring" style={{ left: `${r.x * 100}%`, top: `${r.y * 100}%` }}><b>{i + 1}</b></span>)}</div><span className="image-tag">{pageCopy.originalHeatmapLabel}</span></CornerFrame></div>
               <div className="image-controls"><label className="opacity-control" htmlFor="heat-opacity"><span>{pageCopy.heatmapOpacity}</span><input id="heat-opacity" type="range" min="0" max="100" value={heatOpacity} onChange={(event) => setHeatOpacity(Number(event.target.value))} aria-label="Heatmap opacity" /><span className={mono}>{heatOpacity}%</span></label><label className="outline-control"><input type="checkbox" checked={showOutline} onChange={(event) => setShowOutline(event.target.checked)} /><span className="check-box"><Check size={11} /></span><span>Defect pins</span></label></div>

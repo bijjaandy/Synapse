@@ -35,6 +35,10 @@ def main():
                                     args=["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream",
                                           "--use-angle=swiftshader", "--enable-unsafe-swiftshader"])
         ctx = browser.new_context(viewport={"width": 1440, "height": 900}, permissions=["camera"])
+        # record what the page would say aloud (headless Chromium has no audio)
+        ctx.add_init_script("""window.__spoken = [];
+          if (window.speechSynthesis) { const real = speechSynthesis.speak.bind(speechSynthesis);
+            speechSynthesis.speak = (u) => { window.__spoken.push(u.text); try { real(u); } catch (e) {} }; }""")
         page = ctx.new_page()
         page.on("console", lambda m: errors.append(f"console: {m.text}") if m.type == "error" else None)
         page.on("pageerror", lambda e: errors.append(f"pageerror: {e}"))
@@ -90,6 +94,16 @@ def main():
                 page.wait_for_selector(".verdict:not(.waiting)", timeout=30000)
                 page.wait_for_timeout(2500)
                 print(f"inspect {name}:", page.inner_text(".verdict strong"))
+            print("spoken:", page.evaluate("window.__spoken"))
+            vt = page.locator(".voice-toggle")
+            print("voice toggle:", vt.count(), vt.get_attribute("aria-pressed") if vt.count() else "-", end=" ")
+            if vt.count():
+                vt.click(); print("-> after click:", vt.get_attribute("aria-pressed"), "| stored:", page.evaluate("localStorage.getItem('netrix.voice')"), end=" ")
+                n = len(page.evaluate("window.__spoken"))
+                page.set_input_files("#inspect input[type=file]", str(tmp / "inspect_good.png"))
+                page.wait_for_selector(".verdict:not(.waiting)", timeout=30000); page.wait_for_timeout(1500)
+                print("| spoken while muted:", len(page.evaluate("window.__spoken")) - n)
+                vt.click()
             page.click("text=2D heatmap"); page.wait_for_timeout(500); print("2D legend:", page.locator(".heat-legend").count())
             page.click("text=Layer map"); page.wait_for_timeout(1500); print("layer sheets:", page.locator(".layer-sheet").count(), "images:", page.locator(".layer-sheet img").count())
             page.click("text=Side by side") if page.locator("text=Side by side").count() else None
