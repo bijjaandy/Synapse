@@ -121,6 +121,7 @@ def fake_defect(img, rng, subtle=False):
 
 # ---------- model ----------
 
+STRICTNESS_RANGE = (0.8, 1.25)  # line = calibrated threshold / strictness; >1 flags more, <1 fewer false alarms
 QUALITY_VERSION = 2  # 2 = sharpness measured on grey / its mean (bd60ed0). Older saved stats can't be compared.
 
 
@@ -166,7 +167,8 @@ class Inspector:
         self.q = q        # threshold = this quantile of held-out good scores (0.95 won on MVTec: acc 0.70 -> 0.81)
         self.rotations = max(1, int(rotations))  # >1: also try rotated copies, keep the best match (parts that turn, e.g. screws)
         self.bank = None
-        self.low = self.high = self.thr = None
+        self.strictness = 1.0  # set per part by a QC inspector; the calibrated values below stay as trained
+        self._thr = self._low = self._high = None
         self.quality = None  # brightness / sharpness range of the training photos, for the "retake photo" check
 
     def _scores(self, imgs, batch=16, keep_patches=False):
@@ -251,6 +253,14 @@ class Inspector:
         self.quality = {"bright": [float(stats[:, 0].min()), float(stats[:, 0].max())], "sharp_min": float(stats[:, 1].min()),
                         "version": QUALITY_VERSION}
 
+    # the line and unsure band the model decides with: calibrated values scaled by strictness
+    def _scaled(self, v):
+        return None if v is None else v / self.strictness
+
+    thr = property(lambda self: self._scaled(self._thr), lambda self, v: setattr(self, "_thr", v))
+    low = property(lambda self: self._scaled(self._low), lambda self, v: setattr(self, "_low", v))
+    high = property(lambda self: self._scaled(self._high), lambda self, v: setattr(self, "_high", v))
+
     def _calibrate(self, good):
         self.thr = float(np.quantile(good, self.q))
         # narrow unsure band around the threshold, sized by how much good scores vary
@@ -276,7 +286,7 @@ class Inspector:
                 reasons.append("too bright compared with the training photos")
             if self.quality.get("version") == QUALITY_VERSION and sharp < 0.4 * self.quality["sharp_min"]:
                 reasons.append("blurry or out of focus")
-        if (patches >= self.thr).mean() > self.RETAKE_FRAC:
+        if (patches >= self._thr).mean() > self.RETAKE_FRAC:  # calibrated line: strictness shouldn't cause retakes
             reasons.append("most of the photo looks different: wrong object, angle, background or lighting?")
         return reasons
 
@@ -309,8 +319,9 @@ class Inspector:
         self.bank = torch.cat([self.bank, greedy_coreset(f, 0.1), flagged])
 
     def save(self, path):
-        torch.save({"bank": self.bank, "low": self.low, "high": self.high, "thr": self.thr,
-                    "backbone": self.fx.name, "rotations": self.rotations, "quality": self.quality}, path)
+        torch.save({"bank": self.bank, "low": self._low, "high": self._high, "thr": self._thr,
+                    "backbone": self.fx.name, "rotations": self.rotations, "quality": self.quality,
+                    "strictness": self.strictness}, path)
 
     @classmethod
     def load(cls, path, extractor=None):
@@ -320,6 +331,7 @@ class Inspector:
             extractor = FeatureExtractor(backbone)
         m = cls(extractor, rotations=d.get("rotations", 1))
         m.bank, m.low, m.high, m.thr = d["bank"], d["low"], d["high"], d["thr"]
+        m.strictness = float(d.get("strictness", 1.0))  # files from before the strictness slider are 1.0
         m.quality = d.get("quality")  # older models have no photo-quality stats; that check is then skipped
         return m
 

@@ -24,7 +24,7 @@ from PIL import Image
 import assistant
 from auth import ROLES, UserStore, bearer, require_role
 from inspection_log import InspectionLog
-from inspector import QUALITY_VERSION, BACKBONES, WEIGHTS_DIR, FeatureExtractor, Inspector, SampleMeter, choose_backbone, list_images, overlay
+from inspector import QUALITY_VERSION, STRICTNESS_RANGE, BACKBONES, WEIGHTS_DIR, FeatureExtractor, Inspector, SampleMeter, choose_backbone, list_images, overlay
 
 ROOT = Path(__file__).parent
 DATA, MODELS = ROOT / "data", ROOT / "models"
@@ -106,6 +106,20 @@ def saved_backbone(path):
     return torch.load(path).get("backbone", "resnet18")  # models saved before this field were resnet18
 
 
+def saved_strictness(path):
+    return float(torch.load(path).get("strictness", 1.0))
+
+
+def current_strictness(name):
+    """The part's strictness: from the model in memory, else its saved file, else 1.0."""
+    with state_lock:
+        m = models.get(name)
+    if m:
+        return m.strictness
+    path = MODELS / f"{name}.pt"
+    return saved_strictness(path) if path.exists() else 1.0
+
+
 def saved_needs_retrain(path):
     q = torch.load(path).get("quality")
     return bool(q) and q.get("version") != QUALITY_VERSION
@@ -138,7 +152,9 @@ def run_training(name, folder, backbone, rotations):
                 log(f"auto: using {backbone}")
             elif backbone not in extractors:
                 log(f"loading {backbone} backbone...")
+            keep = current_strictness(name)  # retraining keeps the part's strictness setting
             m = Inspector(get_fx(backbone), rotations=rotations).fit(good, log=log)
+            m.strictness = keep
             MODELS.mkdir(exist_ok=True)
             m.save(MODELS / f"{name}.pt")
             with state_lock:
@@ -194,7 +210,7 @@ def train(name: str, files: list[UploadFile] = File(...), backbone: str = Form("
 def status(name: str):
     check_name(name)
     if name in jobs:
-        return {"name": name, **jobs[name]}
+        return {"name": name, **jobs[name], "strictness": current_strictness(name)}
     path = MODELS / f"{name}.pt"
     if path.exists():
         with state_lock:
@@ -203,8 +219,30 @@ def status(name: str):
         return {"name": name, "state": "ready", "backbone": m.fx.name if m else saved_backbone(path),
                 "n_images": len(list(good.glob("*.png"))) if good.exists() else None,
                 "trained_at": path.stat().st_mtime,
-                "needs_retrain": m.needs_retrain if m else saved_needs_retrain(path)}
+                "needs_retrain": m.needs_retrain if m else saved_needs_retrain(path),
+                "strictness": m.strictness if m else saved_strictness(path)}
     raise HTTPException(404, f"unknown object '{name}'")
+
+
+class StrictnessBody(BaseModel):
+    factor: float
+
+
+@app.put("/objects/{name}/strictness")
+def set_strictness(name: str, body: StrictnessBody, who: dict = Depends(can_verify)):
+    """QC inspectors and supervisors: how strict this part's line is. 1.0 = as trained,
+    >1 (up to 1.25) flags more (fewer missed defects), <1 (down to 0.8) flags fewer (fewer false alarms)."""
+    check_name(name)
+    lo, hi = STRICTNESS_RANGE
+    if not lo <= body.factor <= hi:
+        raise HTTPException(400, f"factor must be between {lo} and {hi}")
+    if jobs.get(name, {}).get("state") in ("queued", "training"):
+        raise HTTPException(409, f"'{name}' is training; wait for it to finish")
+    m = get_model(name)
+    with state_lock:
+        m.strictness = round(float(body.factor), 3)
+        m.save(MODELS / f"{name}.pt")
+    return {"name": name, "strictness": m.strictness, "threshold": round(m.thr, 4), "by": who["username"]}
 
 
 @app.delete("/objects/{name}")
@@ -237,7 +275,7 @@ def predict(name: str, file: UploadFile = File(...), heatmap: bool = True, log: 
     out = {"label": r["label"], "score": round(r["score"], 4), "ms": round(r["ms"], 1),
            "threshold": round(m.thr, 4), "unsure_band": [round(m.low, 4), round(m.high, 4)],
            "reasons": r["reasons"], "regions": r["regions"], "grid": r["grid"], "grid_size": r["grid_size"],
-           "backbone": m.fx.name, "rotations": m.rotations}
+           "backbone": m.fx.name, "rotations": m.rotations, "strictness": m.strictness}
     buf = io.BytesIO()
     overlay(io.BytesIO(data), r["map"], buf, vmax=m.high * 1.5)
     png = buf.getvalue()

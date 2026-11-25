@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState, type InputHTMLAttributes } from "react";
-import { AlertCircle, Check, Clock3, FolderOpen, LoaderCircle, RefreshCw, Trash2, Upload, Wifi, WifiOff } from "lucide-react";
-import { deleteObject, evaluateTestSet, loadSession, type EvaluationResult, type ObjectTrainingStatus } from "@/lib/api";
+import { AlertCircle, Check, Clock3, FolderOpen, LoaderCircle, RefreshCw, Trash2, Upload, Wifi, WifiOff, Gauge } from "lucide-react";
+import { deleteObject, evaluateTestSet, loadSession, type EvaluationResult, type ObjectTrainingStatus, setStrictness, STRICTNESS_MIN, STRICTNESS_MAX } from "@/lib/api";
 import { evaluationCopy, limitationCopy, limitationTitle, limitationsEyebrow, measuredLabel, objectCategories, objectViewCopy, projectTargets, projectTargetsLabel, runtimeIndicatorLabel, runtimeOfflineLabel, runtimeOnlineLabel, runtimeStatusCopy, runtimeTargetCopy, runtimeTargetLabel, sampleDataLabel } from "@/config/content";
 
 const mono = "font-mono";
@@ -78,9 +78,35 @@ export function ObjectLibraryPanel({ statuses, loading, error, active, onChanged
     <div className="panel-intro"><div><h3>{objectViewCopy.title}</h3><p>{objectViewCopy.description}</p></div><span className="sample-badge">{objectViewCopy.sampleBadge}</span></div>
     {loading ? <div className="object-status-grid" aria-label="Loading object status">{objectCategories.map((item) => <div className="object-status-card status-skeleton" key={item.id}><span /><span /><span /></div>)}</div> : error ? <div className="evaluation-state error-state" role="alert"><AlertCircle size={17} /><p>{objectViewCopy.error}</p></div> : statuses.length === 0 ? <div className="evaluation-empty"><p>{objectViewCopy.empty}</p></div> : <div className="object-status-grid">{statuses.map((status) => {
       const category = objectCategories.find((item) => item.id === status.objectId);
-      return <article className="object-status-card" key={status.objectId}><div className="object-status-head"><span className={`${mono} object-code`}>{category?.code ?? "CUS"}</span>{status.backbone && <span className={`${mono} object-code`}>{status.backbone}</span>}</div><h4>{status.objectName}</h4><span className={`object-status-badge ${status.status === "Trained" ? "trained" : "not-trained"}`}>{status.status}</span><p>{status.status === "Trained" ? (status.goodImageCount != null ? objectViewCopy.trainedImages(status.goodImageCount) : objectViewCopy.imageCountUnavailable) : status.status === "Not trained" ? objectViewCopy.untrainedImages : status.status}</p><small className={mono}>{objectViewCopy.lastTrained} · {status.lastTrainedAt ? new Date(status.lastTrainedAt).toLocaleString() : "—"}</small>{status.needsRetrain && <span className="retrain-badge" title="Trained before the current blur check. Retrain with the same photos to turn it back on."><RefreshCw size={11} /> Retrain recommended: blur check is off</span>}{canRemove && status.status !== "Not trained" && status.status !== "Training" && <RemovePart id={status.objectId} name={status.objectName} onRemoved={onChanged} />}</article>;
+      return <article className="object-status-card" key={status.objectId}><div className="object-status-head"><span className={`${mono} object-code`}>{category?.code ?? "CUS"}</span>{status.backbone && <span className={`${mono} object-code`}>{status.backbone}</span>}</div><h4>{status.objectName}</h4><span className={`object-status-badge ${status.status === "Trained" ? "trained" : "not-trained"}`}>{status.status}</span><p>{status.status === "Trained" ? (status.goodImageCount != null ? objectViewCopy.trainedImages(status.goodImageCount) : objectViewCopy.imageCountUnavailable) : status.status === "Not trained" ? objectViewCopy.untrainedImages : status.status}</p><small className={mono}>{objectViewCopy.lastTrained} · {status.lastTrainedAt ? new Date(status.lastTrainedAt).toLocaleString() : "—"}</small>{status.needsRetrain && <span className="retrain-badge" title="Trained before the current blur check. Retrain with the same photos to turn it back on."><RefreshCw size={11} /> Retrain recommended: blur check is off</span>}{status.status === "Trained" && <StrictnessControl id={status.objectId} value={status.strictness ?? 1} canEdit={canRemove} onSaved={onChanged} />}{canRemove && status.status !== "Not trained" && status.status !== "Training" && <RemovePart id={status.objectId} name={status.objectName} onRemoved={onChanged} />}</article>;
     })}</div>}
     <p className="object-state-note">{objectViewCopy.demoNote}</p>
+  </div>;
+}
+
+/** Per-part strictness. Inspectors/supervisors drag (saved on release); operators see the value. */
+function StrictnessControl({ id, value, canEdit, onSaved }: { id: string; value: number; canEdit: boolean; onSaved?: () => void }) {
+  const [v, setV] = useState(value);
+  const [state, setState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => { setV(value); }, [value]);
+  const word = (x: number) => (x < 0.97 ? "Lenient" : x > 1.03 ? "Strict" : "Normal");
+  const pct = (x: number) => `${((x - STRICTNESS_MIN) / (STRICTNESS_MAX - STRICTNESS_MIN)) * 100}%`;
+  async function save() {
+    if (Math.abs(v - value) < 1e-6) return;
+    setState("saving"); setError(null);
+    try { await setStrictness(id, v); setState("saved"); onSaved?.(); }
+    catch (cause) { setState("error"); setError(cause instanceof Error ? cause.message : String(cause)); setV(value); }
+  }
+  if (!canEdit) return <p className="strictness-readonly"><Gauge size={13} /> Strictness <b>{word(value)} {value.toFixed(2)}</b> <small>(set by QC)</small></p>;
+  return <div className="strictness">
+    <label htmlFor={`strict-${id}`}><Gauge size={13} /> Strictness <b>{word(v)} {v.toFixed(2)}</b>{state === "saving" ? <small> saving…</small> : state === "saved" ? <small> saved</small> : null}</label>
+    <input id={`strict-${id}`} type="range" min={STRICTNESS_MIN} max={STRICTNESS_MAX} step={0.05} value={v}
+      onChange={(event) => { setV(Number(event.target.value)); setState("idle"); }}
+      onPointerUp={save} onKeyUp={save} onBlur={save} />
+    <div className="strictness-scale" aria-hidden="true"><span style={{ left: 0 }}>Lenient 0.8</span><span style={{ left: pct(1) }}>Normal 1.0</span><span style={{ right: 0 }}>Strict 1.25</span></div>
+    <small className="strictness-note">Lenient = fewer false alarms. Strict = fewer missed defects.</small>
+    {error && <small className="cam-error" role="alert">{error}</small>}
   </div>;
 }
 

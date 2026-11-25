@@ -905,3 +905,13 @@ body { font-family:var(--font-ui); font-size:16px; }
   .summary-dl > div { display: flex; justify-content: space-between; align-items: baseline; gap: .8rem; min-width: 0; }
   .summary-dl dd { white-space: normal; overflow-wrap: anywhere; }
 }
+
+/* per-part strictness slider in the object library */
+.strictness { display: grid; gap: .3rem; margin-top: .4rem; padding-top: .6rem; border-top: 1px solid var(--line); }
+.strictness label, .strictness-readonly { display: flex; align-items: center; gap: .35rem; flex-wrap: wrap; font-size: .8rem; color: var(--forest); margin: .4rem 0 0; }
+.strictness label small, .strictness-readonly small { color: var(--sage); font-size: .72rem; }
+.strictness input[type=range] { width: 100%; accent-color: var(--forest); }
+.strictness-scale { position: relative; height: 1rem; font: .66rem var(--font-tech, monospace); color: var(--forest); opacity: .75; }
+.strictness-scale span { position: absolute; top: 0; white-space: nowrap; }
+.strictness-scale span:nth-child(2) { transform: translateX(-50%); }
+.strictness-note { font-size: .72rem; color: var(--forest); opacity: .8; }

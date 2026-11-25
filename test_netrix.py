@@ -141,3 +141,37 @@ def test_old_models_flagged_for_retrain(netrix, monkeypatch):
     assert s["needs_retrain"] is True
     m = server.get_model("old1")
     assert m.needs_retrain and not any("blurry" in r for r in m.photo_problems(np.zeros((224, 224, 3), np.float32) + 0.5, np.zeros(10)))
+
+
+def test_strictness_per_part(netrix):
+    c = netrix
+    train_toy(c, "strict_t", backbone="resnet18")
+    photo = png(part(np.random.default_rng(11))[0])
+    ratio = lambda r: r["score"] / r["threshold"]
+    assert c.get("/objects/strict_t/status").json()["strictness"] == 1.0
+    normal = c.post("/objects/strict_t/predict?log=false", files={"file": ("p.png", photo)}).json()
+    assert normal["strictness"] == 1.0
+
+    hi, _ = login(c, "inspector", "inspector123")
+    ho, _ = login(c, "operator", "operator123")
+    assert c.put("/objects/strict_t/strictness", json={"factor": 1.2}, headers=ho).status_code == 403
+    assert c.put("/objects/strict_t/strictness", json={"factor": 1.2}).status_code == 401
+    for bad in (0.5, 1.3, 2):
+        assert c.put("/objects/strict_t/strictness", json={"factor": bad}, headers=hi).status_code == 400
+    r = c.put("/objects/strict_t/strictness", json={"factor": 1.2}, headers=hi)
+    assert r.status_code == 200 and r.json()["strictness"] == 1.2
+
+    strict = c.post("/objects/strict_t/predict?log=false", files={"file": ("p.png", photo)}).json()
+    assert strict["strictness"] == 1.2
+    assert strict["score"] == pytest.approx(normal["score"], rel=1e-3)          # same photo, same score...
+    assert ratio(strict) > ratio(normal) * 1.15                                 # ...but closer to / over the line
+    lo, hi_ = strict["unsure_band"]
+    assert lo < strict["threshold"] < hi_                                       # band scaled with the line
+    assert c.get("/objects/strict_t/status").json()["strictness"] == 1.2
+
+    # saved in the .pt file: a fresh load keeps it, and old files without the field load as 1.0
+    path = server.MODELS / "strict_t.pt"
+    assert server.Inspector.load(path).strictness == 1.2
+    import torch
+    d = torch.load(path); d.pop("strictness"); torch.save(d, path)
+    assert server.Inspector.load(path).strictness == 1.0

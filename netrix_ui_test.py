@@ -78,6 +78,9 @@ def main():
             page.goto(f"{URL}/summary", wait_until="networkidle")
             page.wait_for_selector(".netrix-denied", timeout=10000)
             print("operator on /summary:", page.inner_text(".netrix-denied").split("\n")[0])
+            page.goto(f"{URL}/objects", wait_until="networkidle")
+            page.wait_for_selector(".object-status-card", timeout=10000); page.wait_for_timeout(1000)
+            print("operator strictness: read-only", page.locator(".strictness-readonly").count(), "| sliders", page.locator(".strictness input").count())
 
         def dashboard():
             page.goto(f"{URL}/dashboard", wait_until="networkidle")
@@ -137,6 +140,13 @@ def main():
             card = page.locator(".object-status-card", has_text=PART)
             card.wait_for(timeout=10000)
             print("object card:", " | ".join(card.inner_text().split("\n"))[:160])
+            slider = card.locator(".strictness input[type=range]")
+            print("strictness slider (inspector):", slider.count(), "value", slider.get_attribute("value") if slider.count() else "-", end=" ")
+            if slider.count():  # only the test part's card is ever changed
+                slider.focus(); page.keyboard.press("ArrowRight"); page.wait_for_timeout(1500)
+                import urllib.request, json as _json
+                saved = _json.load(urllib.request.urlopen(f"http://localhost:8000/objects/{PART}/status"))["strictness"]
+                print("-> label:", card.locator(".strictness label").inner_text().replace("\n", " "), "| backend:", saved)
             page.screenshot(path=str(SHOTS / "objects.png"))
 
         def history():

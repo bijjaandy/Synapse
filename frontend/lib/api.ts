@@ -51,6 +51,7 @@ export type ObjectTrainingStatus = {
   lastTrainedAt: string | null;
   backbone: string | null;
   needsRetrain?: boolean;   // saved before the current blur check: retrain to turn it back on
+  strictness?: number;      // 1.0 = as trained; >1 flags more, <1 fewer false alarms (set by QC)
 };
 
 export type EvaluationResult = {
@@ -124,7 +125,7 @@ export async function trainObject(objectId: string, files: File[], options: { ba
 }
 
 type RawStatus = { state: string; started?: number; train_s?: number; log?: string[]; backbone?: string; error?: string;
-                   auto_report?: AutoEstimate[]; n_images?: number | null; trained_at?: number; needs_retrain?: boolean };
+                   auto_report?: AutoEstimate[]; n_images?: number | null; trained_at?: number; needs_retrain?: boolean; strictness?: number };
 
 export async function getTrainStatus(jobId: string): Promise<TrainStatus> {
   const s = await call<RawStatus>(`/objects/${jobId}/status`);
@@ -250,7 +251,7 @@ export async function getObjectStatuses(): Promise<ObjectTrainingStatus[]> {
       const status = s.state === "ready" ? "Trained" : s.state === "failed" ? "Failed" : "Training";
       return { ...base, status: status as ObjectTrainingStatus["status"], goodImageCount: s.n_images ?? null,
                lastTrainedAt: s.trained_at ? new Date(s.trained_at * 1000).toISOString() : null,
-               backbone: s.backbone && s.backbone !== "auto" ? s.backbone : null, needsRetrain: !!s.needs_retrain };
+               backbone: s.backbone && s.backbone !== "auto" ? s.backbone : null, needsRetrain: !!s.needs_retrain, strictness: s.strictness ?? 1 };
     } catch {
       return { ...base, status: "Trained" as const };
     }
@@ -350,6 +351,13 @@ export async function assistantStatus(): Promise<{ ollama: boolean; model: strin
 export async function askAssistant(message: string, history: ChatMessage[]): Promise<{ answer: string; source: string; model: string | null; ms: number }> {
   return call("/assistant", { method: "POST", headers: { "Content-Type": "application/json" },
                               body: JSON.stringify({ message, history: history.map(({ role, content }) => ({ role, content })) }) });
+}
+
+export const STRICTNESS_MIN = 0.8, STRICTNESS_MAX = 1.25;
+/** How strict a part's line is (QC inspectors and supervisors). */
+export async function setStrictness(name: string, factor: number) {
+  return call<{ name: string; strictness: number; threshold: number }>(`/objects/${encodeURIComponent(name)}/strictness`,
+    { method: "PUT", headers: { ...authHeaders(), "Content-Type": "application/json" }, body: JSON.stringify({ factor }) });
 }
 
 /** Remove a part (model + training photos). QC inspectors and supervisors only. purgeLog also deletes its history. */
