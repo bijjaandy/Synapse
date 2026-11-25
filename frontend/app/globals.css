@@ -928,3 +928,27 @@ body { font-family:var(--font-ui); font-size:16px; }
 .judge-table td { padding: .35rem .5rem; border-bottom: 1px solid var(--line); vertical-align: middle; }
 .judge-thumb { width: 40px; height: 40px; object-fit: cover; border-radius: 6px; display: block; }
 .judge-file { max-width: 260px; overflow-wrap: anywhere; }
+
+/* conveyor mode (dashboard webcam) */
+.conveyor { display: grid; gap: .55rem; margin-top: .7rem; padding-top: .7rem; border-top: 1px dashed var(--line); }
+.conveyor-switch { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; font-size: .85rem; font-weight: 600; color: var(--forest); cursor: pointer; }
+.conveyor-switch input { width: 34px; height: 18px; accent-color: var(--forest); cursor: pointer; }
+.conveyor-phase { font-weight: 400; font-size: .72rem; padding: .1rem .5rem; border-radius: 999px; background: color-mix(in srgb, var(--sage) 22%, transparent); }
+.conveyor-phase.moving, .conveyor-phase.settling { background: color-mix(in srgb, #B8860B 20%, transparent); }
+.conveyor-phase.inspecting { background: color-mix(in srgb, var(--forest) 20%, transparent); }
+.conveyor-tally { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .35rem; }
+.conveyor-tally div { display: grid; padding: .35rem .45rem; border: 1px solid var(--line); border-radius: 10px; }
+.conveyor-tally strong { font: 600 1.05rem var(--font-tech, monospace); color: var(--forest); }
+.conveyor-tally span { font-size: .68rem; color: var(--forest); opacity: .75; }
+.conveyor-recent { display: flex; flex-wrap: wrap; gap: .3rem; min-height: 1.4rem; align-items: center; }
+.conveyor-recent small { font-size: .72rem; opacity: .7; }
+.chip { font-size: .7rem; font-weight: 600; padding: .15rem .5rem; border-radius: 999px; color: #fff; }
+.chip-good { background: #4f7a6c; } .chip-defective { background: #c4501a; } .chip-unsure { background: #a67c00; } .chip-retake { background: #6b6f76; }
+.conveyor-sensitivity { display: grid; gap: .25rem; font-size: .75rem; color: var(--forest); }
+.conveyor-sensitivity small { opacity: .7; }
+.conveyor-sensitivity input { width: 100%; accent-color: var(--forest); }
+.motion-bar { position: relative; height: 6px; border-radius: 999px; background: color-mix(in srgb, var(--sage) 22%, transparent); }
+.motion-bar i { position: absolute; inset: 0 auto 0 0; border-radius: 999px; background: var(--sage); transition: width .15s; }
+.motion-bar b { position: absolute; top: -3px; bottom: -3px; width: 2px; background: #c4501a; }
+.conveyor-note { margin: 0; font-size: .72rem; line-height: 1.45; color: var(--forest); opacity: .8; }
+.conveyor-now { justify-self: start; }

@@ -57,7 +57,7 @@ export function InspectionStage3D({ result, photo, onSequenceDone }: { result: I
 export function WebcamCapture({ mode, onCaptured, onInspect, disabled }: {
   mode: "train" | "inspect";
   onCaptured?: (files: File[]) => void;
-  onInspect?: (file: File) => void;
+  onInspect?: (file: File) => unknown;   // may return the InspectionResult (used by conveyor mode's tally)
   disabled?: boolean;
 }) {
   const video = useRef<HTMLVideoElement>(null);
@@ -151,8 +151,125 @@ export function WebcamCapture({ mode, onCaptured, onInspect, disabled }: {
         </> : <button type="button" onClick={inspectFrame} disabled={disabled}><ScanLine size={14} /> Inspect this frame</button>}
         <button type="button" onClick={stop} aria-label="Stop the webcam"><CameraOff size={14} /> Stop</button>
       </div>
+      {mode === "inspect" && <ConveyorControls video={video} grab={grab} onInspect={onInspect} disabled={disabled} />}
     </>}
     {error && <p className="cam-error" role="alert">{error}</p>}
+  </div>;
+}
+
+type Tally = { inspected: number; good: number; defective: number; unsure: number; retake: number };
+const EMPTY_TALLY: Tally = { inspected: 0, good: 0, defective: 0, unsure: 0, retake: 0 };
+const SETTLE_MS = 500;               // a part has arrived when the picture has been still this long after moving
+const motionThreshold = (sensitivity: number) => 2 + (10 - sensitivity) * 3;  // 10 = most sensitive (2), 1 = calmest (29)
+
+/** Conveyor mode: watch the webcam, inspect each part once it has arrived and stopped moving. */
+function ConveyorControls({ video, grab, onInspect, disabled }: {
+  video: React.RefObject<HTMLVideoElement | null>;
+  grab: () => Promise<File>;
+  onInspect?: (file: File) => unknown;
+  disabled?: boolean;
+}) {
+  const [on, setOn] = useState(false);
+  const [sensitivity, setSensitivity] = useState(6);
+  const [motion, setMotion] = useState(0);
+  const [phase, setPhase] = useState<"waiting" | "moving" | "settling" | "inspecting">("waiting");
+  const [tally, setTally] = useState<Tally>(EMPTY_TALLY);
+  const [recent, setRecent] = useState<string[]>([]);
+  const [startedAt, setStartedAt] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const busy = useRef(false);
+  const disabledRef = useRef(disabled);
+  disabledRef.current = disabled;
+  const thresholdRef = useRef(motionThreshold(sensitivity));
+  thresholdRef.current = motionThreshold(sensitivity);
+
+  async function inspectNow() {
+    if (busy.current) return;
+    busy.current = true;
+    setPhase("inspecting");
+    setError(null);
+    try {
+      const result = await onInspect?.(await grab());
+      const verdict = (result as InspectionResult | null | undefined)?.verdict;
+      if (verdict) {
+        const key = verdict.toLowerCase() as keyof Tally;
+        setTally((t) => ({ ...t, inspected: t.inspected + 1, [key]: t[key] + 1 }));
+        setRecent((r) => [verdict, ...r].slice(0, 5));
+      }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      busy.current = false;
+      setPhase("waiting");
+    }
+  }
+  const inspectRef = useRef(inspectNow);
+  inspectRef.current = inspectNow;
+
+  // motion watch: 64x48 grey frames, mean absolute difference (0-255) between consecutive frames
+  useEffect(() => {
+    if (!on) return;
+    const canvas = document.createElement("canvas");
+    canvas.width = 64; canvas.height = 48;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    let prev: Float32Array | null = null;
+    let state: "waiting" | "moving" | "settling" = "waiting";
+    let stillSince = 0;
+    let lastShown = 0;
+    const timer = window.setInterval(() => {
+      const v = video.current;
+      if (!ctx || !v || !v.videoWidth || busy.current) return;
+      ctx.drawImage(v, 0, 0, 64, 48);
+      const px = ctx.getImageData(0, 0, 64, 48).data;
+      const grey = new Float32Array(64 * 48);
+      for (let i = 0; i < grey.length; i++) grey[i] = 0.299 * px[i * 4] + 0.587 * px[i * 4 + 1] + 0.114 * px[i * 4 + 2];
+      if (!prev) { prev = grey; return; }
+      let diff = 0;
+      for (let i = 0; i < grey.length; i++) diff += Math.abs(grey[i] - prev[i]);
+      diff /= grey.length;
+      prev = grey;
+      const now = performance.now();
+      if (now - lastShown > 200) { setMotion(diff); lastShown = now; }
+      const moving = diff > thresholdRef.current;
+      if (state === "waiting") {
+        if (moving) { state = "moving"; setPhase("moving"); }      // something new is coming in
+      } else if (moving) {
+        if (state === "settling") { state = "moving"; setPhase("moving"); }
+      } else if (state === "moving") {
+        state = "settling"; stillSince = now; setPhase("settling");
+      } else if (now - stillSince >= SETTLE_MS && !disabledRef.current) {
+        state = "waiting";                                          // inspected once; wait for the next change
+        inspectRef.current();
+      }
+    }, 80);
+    return () => window.clearInterval(timer);
+  }, [on, video]);
+
+  function toggle() {
+    setOn((v) => !v);
+    if (!on) { setTally(EMPTY_TALLY); setRecent([]); setStartedAt(Date.now()); setPhase("waiting"); }
+  }
+
+  const minutes = startedAt ? Math.max((Date.now() - startedAt) / 60000, 1 / 60) : 0;
+  const ppm = tally.inspected && minutes ? (tally.inspected / minutes).toFixed(1) : "—";
+  const threshold = motionThreshold(sensitivity);
+
+  return <div className={`conveyor ${on ? "is-on" : ""}`}>
+    <label className="conveyor-switch"><input type="checkbox" role="switch" checked={on} onChange={toggle} aria-label="Conveyor mode" /><span>Conveyor mode</span>
+      {on && <small className={`conveyor-phase ${phase}`}>{phase === "waiting" ? "waiting for a part" : phase === "moving" ? "part moving…" : phase === "settling" ? "settling…" : "inspecting…"}</small>}</label>
+    {on && <>
+      <div className="conveyor-tally" aria-live="polite">
+        {([["inspected", tally.inspected], ["good", tally.good], ["defective", tally.defective], ["unsure", tally.unsure], ["retake", tally.retake], ["per min", ppm]] as const).map(([label, n]) =>
+          <div key={label} className={`tally-${label.replace(" ", "-")}`}><strong>{n}</strong><span>{label}</span></div>)}
+      </div>
+      <div className="conveyor-recent" aria-label="Last five verdicts">{recent.length ? recent.map((v, i) => <span key={i} className={`chip chip-${v.toLowerCase()}`}>{v}</span>) : <small>No parts yet</small>}</div>
+      <label className="conveyor-sensitivity"><span>Motion sensitivity <b>{sensitivity}</b> <small>(motion now {motion.toFixed(1)}, trigger above {threshold})</small></span>
+        <input type="range" min={1} max={10} step={1} value={sensitivity} onChange={(event) => setSensitivity(Number(event.target.value))} aria-label="Motion sensitivity" />
+        <span className="motion-bar" aria-hidden="true"><i style={{ width: `${Math.min(100, (motion / 40) * 100)}%` }} /><b style={{ left: `${Math.min(100, (threshold / 40) * 100)}%` }} /></span></label>
+      <p className="conveyor-note">Keep the camera and the lighting fixed. Each part is inspected once, half a second after it stops moving, and logged like any other inspection.</p>
+      <button type="button" className="conveyor-now" onClick={inspectNow} disabled={disabled || phase === "inspecting"}><ScanLine size={14} /> Inspect now</button>
+      {error && <p className="cam-error" role="alert">{error}</p>}
+    </>}
   </div>;
 }
 

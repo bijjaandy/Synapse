@@ -107,6 +107,21 @@ def main():
                 page.wait_for_selector(".verdict:not(.waiting)", timeout=30000); page.wait_for_timeout(1500)
                 print("| spoken while muted:", len(page.evaluate("window.__spoken")) - n)
                 vt.click()
+            # conveyor mode with Chromium's fake camera: switch on, use the manual "Inspect now", check the tally
+            page.click(".live-cam-inspect .cam-start")
+            page.wait_for_selector(".live-cam-inspect video", timeout=10000); page.wait_for_timeout(2000)
+            page.locator(".conveyor-switch input").check()
+            page.wait_for_timeout(1500)
+            print("conveyor:", page.inner_text(".conveyor-switch").replace("\n", " "), "|", page.inner_text(".conveyor-sensitivity").split("\n")[0])
+            before = page.inner_text(".conveyor-tally .tally-inspected strong")
+            page.click(".conveyor-now")
+            page.wait_for_function(f"Number(document.querySelector('.conveyor-tally .tally-inspected strong')?.textContent) > {before}", timeout=30000)
+            page.wait_for_timeout(500)
+            print("tally:", " | ".join(page.locator(".conveyor-tally div").all_inner_texts()).replace("\n", " "),
+                  "| chips:", page.locator(".conveyor-recent .chip").all_inner_texts(), "| spoken last:", page.evaluate("window.__spoken.slice(-1)"))
+            page.locator(".live-cam-inspect").screenshot(path=str(SHOTS / "conveyor.png"))
+            page.locator(".conveyor-switch input").uncheck()
+            page.click(".live-cam-inspect >> text=Stop")
             page.click("text=2D heatmap"); page.wait_for_timeout(500); print("2D legend:", page.locator(".heat-legend").count())
             page.click("text=Layer map"); page.wait_for_timeout(1500); print("layer sheets:", page.locator(".layer-sheet").count(), "images:", page.locator(".layer-sheet img").count())
             page.click("text=Side by side") if page.locator("text=Side by side").count() else None

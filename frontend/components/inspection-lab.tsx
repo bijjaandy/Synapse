@@ -353,7 +353,7 @@ export default function InspectionLab({ view: page }: { view?: LabView } = {}) {
 
   const voice = useVoice();
 
-  async function runInspection(file: File) {
+  async function runInspection(file: File): Promise<InspectionResult | null> {
     setInspecting(true);
     setInspection(null);
     setInspectionError(null);
@@ -367,6 +367,7 @@ export default function InspectionLab({ view: page }: { view?: LabView } = {}) {
       setInspection(result);
       setInspectedObject(selectedObject);
       voice.announce(result);
+      return result;
       mutateHistory();
       mutateShift();
       mutateLoggedParts();
@@ -374,6 +375,7 @@ export default function InspectionLab({ view: page }: { view?: LabView } = {}) {
       const message = cause instanceof Error ? cause.message : "Inspection could not run. Try another photo.";
       if (message.startsWith("no trained model for")) setUntrainedPart(selectedObject);
       setInspectionError(message);
+      return null;
     } finally {
       setInspecting(false);
     }
