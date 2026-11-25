@@ -95,7 +95,6 @@ export default function Landing() {
       <div className="pipeline-sticky">
         <div ref={host} className="pipeline-canvas" aria-hidden="true" />
         {noWebgl && <img src="/brand/netrix-logo.jpg" alt="Netrix IQ" className="pipeline-fallback" />}
-        {stage === 0 && <motion.img src="/brand/netrix-logo.jpg" alt="Netrix IQ logo" className="pipeline-logo" initial={reducedMotion ? false : { opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.8 }} />}
         <div className={`pipeline-text ${stage === 0 ? "intro" : ""}`} aria-live="polite">
           <AnimatePresence mode="wait">
             <motion.div key={stage} initial={reducedMotion ? false : { opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} exit={reducedMotion ? undefined : { opacity: 0, y: -14 }} transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}>

@@ -770,7 +770,7 @@ body { font-family:var(--font-ui); font-size:16px; }
 .lab-view > section { padding-top: 1.25rem; }
 
 /* ---------- Landing ---------- */
-.netrix-landing { background: var(--cream); color: var(--forest); }
+.netrix-landing { background: var(--cream); color: var(--forest); overflow-x: clip; }
 .landing-top { position: fixed; top: 0; left: 0; right: 0; z-index: 30; display: flex; align-items: center; gap: 1.5rem; padding: .8rem clamp(1rem, 3vw, 2.2rem); background: color-mix(in srgb, var(--cream) 70%, transparent); backdrop-filter: blur(8px); }
 .landing-top nav { display: flex; gap: 1.1rem; margin-left: auto; }
 .landing-top nav a { color: var(--forest); text-decoration: none; font-size: .9rem; opacity: .8; }
@@ -783,7 +783,6 @@ body { font-family:var(--font-ui); font-size:16px; }
 .pipeline-canvas { position: absolute; inset: 0; }
 .pipeline-canvas canvas { display: block; width: 100% !important; height: 100% !important; }
 .pipeline-fallback { position: absolute; right: 8%; top: 50%; transform: translateY(-50%); width: min(40vw, 420px); border-radius: 24px; }
-.pipeline-logo { position: absolute; right: clamp(1rem, 6vw, 6rem); bottom: 12vh; width: min(22vw, 220px); border-radius: 22px; box-shadow: 0 20px 50px color-mix(in srgb, var(--forest) 25%, transparent); }
 .pipeline-text { position: absolute; left: clamp(1rem, 6vw, 6rem); top: 50%; transform: translateY(-50%); max-width: min(460px, 86vw); z-index: 2; padding: 1.25rem 1.4rem; border-radius: 20px; background: color-mix(in srgb, var(--cream) 82%, transparent); backdrop-filter: blur(6px); border: 1px solid var(--border); }
 .pipeline-text.intro { background: transparent; border-color: transparent; backdrop-filter: none; max-width: min(620px, 90vw); }
 .pipeline-text h1 { font-size: clamp(2.2rem, 5.4vw, 4.4rem); line-height: 1.02; margin: .4rem 0 .9rem; letter-spacing: -.02em; }
@@ -796,7 +795,7 @@ body { font-family:var(--font-ui); font-size:16px; }
 .pipeline-rail li span { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; border: 1px solid var(--forest); font-size: .72rem; font-family: var(--font-tech, inherit); }
 .pipeline-rail li.done { opacity: .7; } .pipeline-rail li.done span { background: var(--sage); color: var(--cream); border-color: var(--sage); }
 .pipeline-rail li.active { opacity: 1; font-weight: 600; } .pipeline-rail li.active span { background: var(--defect); border-color: var(--defect); color: white; }
-@media (max-width: 820px) { .pipeline-rail { display: none; } .pipeline-text { top: auto; bottom: 1.5rem; transform: none; } .pipeline-logo { display: none; } }
+@media (max-width: 820px) { .pipeline-rail { display: none; } .pipeline-text { top: auto; bottom: 1.5rem; transform: none; } }
 .pipeline-progress { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: color-mix(in srgb, var(--forest) 10%, transparent); }
 .pipeline-progress span { display: block; height: 100%; background: var(--defect); transform-origin: left; }
 .pipeline-scroll { position: absolute; left: 50%; bottom: 1.6rem; transform: translateX(-50%); font-size: .8rem; display: inline-flex; gap: .35rem; align-items: center; opacity: .7; animation: netrix-bob 1.8s ease-in-out infinite; }
@@ -832,7 +831,7 @@ body { font-family:var(--font-ui); font-size:16px; }
 @media (prefers-reduced-motion: reduce) { .pipeline-scroll, .spin { animation: none; } }
 .kpi small { display: block; font-family: var(--font-tech, inherit); font-size: .75rem; margin-top: .2rem; color: var(--sage); }
 .summary-dl dd { white-space: nowrap; }
-.pipeline-text.intro { background: radial-gradient(closest-side, color-mix(in srgb, var(--cream) 88%, transparent), transparent); padding: 2rem 2.2rem; margin-left: -2rem; }
+.pipeline-text.intro { background: radial-gradient(closest-side, color-mix(in srgb, var(--cream) 88%, transparent), transparent); padding: 2rem 2.2rem; }
 
 /* ---------- Result views: heat legend, 3D overlay, layer map ---------- */
 .heat-legend { margin: .75rem 0 .25rem; font-size: .72rem; }
