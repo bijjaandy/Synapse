@@ -425,7 +425,14 @@ def model_facts(pid):
         return hit[1]
     with state_lock:
         m = models.get(pid)
-    facts = {"backbone": m.fx.name if m else saved_backbone(path), "trained_at": mtime}
+    if m is not None:
+        facts = {"backbone": m.fx.name, "strictness": m.strictness, "needs_retrain": m.needs_retrain}
+    else:
+        d = torch.load(path)
+        q = d.get("quality")
+        facts = {"backbone": d.get("backbone", "resnet18"), "strictness": float(d.get("strictness", 1.0)),
+                 "needs_retrain": bool(q) and q.get("version") != QUALITY_VERSION}
+    facts["trained_at"] = mtime
     _model_cache[pid] = (mtime, facts)
     return facts
 
@@ -438,7 +445,8 @@ def product_summary(pid):
     return {**read_details(pid), "name": pid, "state": state,
             "n_images": len(list(good.glob("*.png"))) if good.exists() else 0,
             "trained_at": job.get("trained_at") or facts.get("trained_at"),
-            "backbone": (job.get("backbone") if job.get("backbone") not in (None, "auto") else None) or facts.get("backbone")}
+            "backbone": (job.get("backbone") if job.get("backbone") not in (None, "auto") else None) or facts.get("backbone"),
+            "strictness": facts.get("strictness", 1.0), "needs_retrain": facts.get("needs_retrain", False)}
 
 
 def name_taken(display_name, except_id=None):

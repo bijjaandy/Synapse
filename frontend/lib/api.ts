@@ -53,6 +53,8 @@ export type ObjectTrainingStatus = {
   backbone: string | null;
   needsRetrain?: boolean;   // saved before the current blur check: retrain to turn it back on
   strictness?: number;      // 1.0 = as trained; >1 flags more, <1 fewer false alarms (set by QC)
+  sku?: string;
+  description?: string;
 };
 
 export type EvaluationResult = {
@@ -241,24 +243,47 @@ export const logCsvUrl = (filter: LogFilter = {}) => `${API_URL}/log.csv${query(
 
 // ---------- objects ----------
 
+type RawProduct = { id: string; display_name: string; sku: string; description: string; state: string; n_images: number;
+                   trained_at: number | null; backbone: string | null; strictness?: number; needs_retrain?: boolean };
+const STATE: Record<string, ObjectTrainingStatus["status"]> = { ready: "Trained", queued: "Training", training: "Training", failed: "Failed", new: "Not trained" };
+
+/** Every product (user-defined parts), one call. "Not trained" = created but no model yet. */
 export async function getObjectStatuses(): Promise<ObjectTrainingStatus[]> {
-  const list = await call<{ name: string; state: string }[]>("/objects");
-  const known = new Set(list.map((o) => o.name));
-  const ids = [...objectCategories.map((c) => c.id as string), ...list.map((o) => o.name).filter((n) => !objectCategories.some((c) => c.id === n))];
-  return Promise.all(ids.map(async (id) => {
-    const base = { objectId: id, objectName: nameOf(id), goodImageCount: null, lastTrainedAt: null, backbone: null };
-    if (!known.has(id)) return { ...base, status: "Not trained" as const, goodImageCount: 0 };
-    try {
-      const s = await call<RawStatus>(`/objects/${id}/status`);
-      const status = s.state === "ready" ? "Trained" : s.state === "failed" ? "Failed" : "Training";
-      return { ...base, status: status as ObjectTrainingStatus["status"], goodImageCount: s.n_images ?? null,
-               lastTrainedAt: s.trained_at ? new Date(s.trained_at * 1000).toISOString() : null,
-               backbone: s.backbone && s.backbone !== "auto" ? s.backbone : null, needsRetrain: !!s.needs_retrain, strictness: s.strictness ?? 1 };
-    } catch {
-      return { ...base, status: "Trained" as const };
-    }
+  const list = await call<RawProduct[]>("/objects");
+  return list.map((o) => ({
+    objectId: o.id, objectName: o.display_name, sku: o.sku, description: o.description,
+    status: STATE[o.state] ?? "Training", goodImageCount: o.n_images,
+    lastTrainedAt: o.trained_at ? new Date(o.trained_at * 1000).toISOString() : null,
+    backbone: o.backbone && o.backbone !== "auto" ? o.backbone : null, needsRetrain: !!o.needs_retrain, strictness: o.strictness ?? 1,
   }));
 }
+
+export async function createProduct(display_name: string, sku = "", description = ""): Promise<RawProduct> {
+  return call<RawProduct>("/products", { method: "POST", headers: { ...authHeaders(), "Content-Type": "application/json" },
+                                         body: JSON.stringify({ display_name, sku, description }) });
+}
+export async function updateProduct(id: string, changes: { display_name?: string; sku?: string; description?: string }): Promise<RawProduct> {
+  return call<RawProduct>(`/products/${encodeURIComponent(id)}`, { method: "PATCH", headers: { ...authHeaders(), "Content-Type": "application/json" },
+                                                                    body: JSON.stringify(changes) });
+}
+/** Download <id>.zip (model + details + training photos). Needs a QC inspector or supervisor login. */
+export async function exportProduct(id: string) {
+  let r: Response;
+  try { r = await fetch(`${API_URL}/objects/${encodeURIComponent(id)}/export.zip`, { headers: authHeaders() }); }
+  catch { throw new Error(`Cannot reach the inspection server at ${API_URL}.`); }
+  if (!r.ok) { const b = await r.json().catch(() => null); throw new Error(typeof b?.detail === "string" ? b.detail : `${r.status} ${r.statusText}`); }
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(await r.blob());
+  a.download = `${id}.zip`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+export async function importProduct(file: File, overwrite = false): Promise<RawProduct & { photos: number }> {
+  const form = new FormData();
+  form.append("file", file, file.name);
+  return call(`/objects/import${overwrite ? "?overwrite=true" : ""}`, { method: "POST", headers: authHeaders(), body: form });
+}
+export const productPhotoUrl = (id: string, index = 0) => `${API_URL}/objects/${encodeURIComponent(id)}/good/${index}.jpg`;
 
 // ---------- evaluation: labelled folders, run through the model without logging ----------
 

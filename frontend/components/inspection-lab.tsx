@@ -5,13 +5,14 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, animate as animateMotion, motion, useMotionValue, useMotionValueEvent, useReducedMotion, useScroll, useSpring, useTransform, type MotionValue } from "framer-motion";
 import useSWR from "swr";
-import { EvaluationPanel, JudgePanel, LimitationsPanel, ObjectLibraryPanel, ProjectTargetsStrip, RuntimeStatusPanel } from "@/components/inspection-panels";
+import { EvaluationPanel, JudgePanel, LimitationsPanel, ProjectTargetsStrip, RuntimeStatusPanel } from "@/components/inspection-panels";
 import { Activity, ArrowDown, ArrowRight, Box, Camera, Check, ChevronDown, CircleHelp, Clock3, Download, FileImage, Gauge, Layers3, LoaderCircle, Menu, Moon, Plus, ScanLine, ShieldCheck, Sun, TriangleAlert, Upload, Volume2, VolumeX, Wifi, WifiOff, X } from "lucide-react";
 import { API_URL, goodPhotoUrl, checkHealth, getHistory, getLoggedParts, getObjectStatuses, getShiftReport, getTrainStatus, inspect, logCsvUrl, markGood, reportPageUrl, trainObject, type AutoEstimate, type Backbone, type InspectionRecord, type InspectionResult, type ObjectTrainingStatus, type ShiftReport, type TrainState } from "@/lib/api";
 import { FeedbackButton, HeatLegend, InspectionStage3D, LayerMap, VerdictReasons, WebcamCapture } from "@/components/live-panels";
 import { heatOverlayUrl } from "@/lib/heatmaps";
 import { useLang, useVoice, verdictPhrase, VERDICT_KN } from "@/lib/voice";
 import { AskAiButton } from "@/components/netrix-panels";
+import { ProductLibrary } from "@/components/product-library";
 import { hackathonName, historyErrorCopy, historyLoadingCopy, layerCopy, layerLegendHeading, collapseLabel, demoModeLabel, explodeLabel, sampleDataLabel, limitationCopy, limitationTitle, maxTrainingFiles, minimumGoodImages, navigationItems, objectCategories, pageCopy, projectName, projectTargets, runtimeStatusCopy, runtimeTargetCopy, systemSectionDescription, systemSectionTitle, toolsSectionDescription, toolsSectionTitle, sampleImagePaths, steps, teamNamePlaceholder, trainingBudgetSeconds, trainingErrorCopy, trainingInstruction, trainingMinimumCopy } from "@/config/content";
 
 const mono = "font-mono";
@@ -500,7 +501,7 @@ export default function InspectionLab({ view: page }: { view?: LabView } = {}) {
       {page === "evaluation" && <label className="select-label eval-object" htmlFor="eval-object"><Eyebrow>{pageCopy.objectSelectLabel}</Eyebrow><div className="select-wrap"><select id="eval-object" value={selectedObject} onChange={(event) => setSelectedObject(event.target.value)}>{objectStatuses.filter((s) => s.status === "Trained").map((s) => <option key={s.objectId} value={s.objectId}>{s.objectName}</option>)}{!objectStatuses.some((s) => s.objectId === selectedObject && s.status === "Trained") && <option value={selectedObject}>{currentObject.name} (not trained)</option>}</select><ChevronDown size={15} /></div></label>}
       <EvaluationPanel objectId={selectedObject} objectName={currentObject.name} active={toolsTab === "evaluation"} />
       {page === "evaluation" && <JudgePanel objectId={selectedObject} objectName={currentObject.name} />}
-      <ObjectLibraryPanel statuses={objectStatuses} loading={objectStatusesLoading} error={objectStatusError} active={toolsTab === "objects"} onChanged={() => mutateObjectStatuses()} />
+      <ProductLibrary statuses={objectStatuses} loading={objectStatusesLoading} error={objectStatusError} active={toolsTab === "objects"} onChanged={() => mutateObjectStatuses()} />
     </section>
     </>}
     {show("history") && <>

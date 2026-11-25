@@ -213,7 +213,9 @@ def main():
 
         def objects():
             page.goto(f"{URL}/objects", wait_until="networkidle")
-            card = page.locator(".object-status-card", has_text=PART)
+            print("library: add card", page.locator(".add-product-card").count(), "| benchmark section", page.locator("details.benchmark-parts").count(),
+                  "| empty note", page.locator(".library-empty").count(), "| products:", page.locator(".product-card h4").all_inner_texts())
+            card = page.locator(".object-status-card", has_text=PART.replace("_", " ").title())  # cards show the display name
             card.wait_for(timeout=10000)
             print("object card:", " | ".join(card.inner_text().split("\n"))[:160])
             slider = card.locator(".strictness input[type=range]")
@@ -235,7 +237,9 @@ def main():
             print("after Esc: panel", page.locator(".glass-panel").count(), "| focus back on card:", page.evaluate("document.activeElement?.dataset?.detail === '1'"))
             page.mouse.move(5, 5); page.wait_for_timeout(200); card.hover(); page.wait_for_timeout(1200)  # enter from outside
             print("hover opens:", page.locator(".glass-panel").count())
-            page.mouse.click(5, 5); page.wait_for_timeout(500)
+            page.mouse.click(5, 5)
+            try: page.wait_for_selector(".glass-panel", state="detached", timeout=5000)  # after its closing animation
+            except Exception: pass
             print("click outside closes:", page.locator(".glass-panel").count() == 0)
             page.screenshot(path=str(SHOTS / "objects.png"))
 

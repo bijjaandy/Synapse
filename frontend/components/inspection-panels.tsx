@@ -1,7 +1,6 @@
 "use client";
 
 import { whereWords } from "@/lib/voice";
-import { PartDetailPanel } from "@/components/part-detail";
 import { useEffect, useRef, useState, type InputHTMLAttributes } from "react";
 import { AlertCircle, Check, Clock3, FolderOpen, LoaderCircle, RefreshCw, Trash2, Upload, Wifi, WifiOff, Gauge } from "lucide-react";
 import { deleteObject, evaluateTestSet, loadSession, type EvaluationResult, type ObjectTrainingStatus, setStrictness, STRICTNESS_MIN, STRICTNESS_MAX, inspect } from "@/lib/api";
@@ -56,7 +55,7 @@ export function EvaluationPanel({ objectId, objectName, active }: { objectId: st
 }
 
 /** Two-step remove (no browser dialog): first click asks, second click removes. */
-function RemovePart({ id, name, onRemoved }: { id: string; name: string; onRemoved?: () => void }) {
+export function RemovePart({ id, name, onRemoved }: { id: string; name: string; onRemoved?: () => void }) {
   const [step, setStep] = useState<"idle" | "ask" | "busy">("idle");
   const [err, setErr] = useState<string | null>(null);
   const go = async () => {
@@ -73,37 +72,8 @@ function RemovePart({ id, name, onRemoved }: { id: string; name: string; onRemov
   </div>;
 }
 
-export function ObjectLibraryPanel({ statuses, loading, error, active, onChanged }: { statuses: ObjectTrainingStatus[]; loading: boolean; error?: Error; active: boolean; onChanged?: () => void }) {
-  const [canRemove, setCanRemove] = useState(false);
-  useEffect(() => { const s = loadSession(); setCanRemove(!!s && (s.role === "inspector" || s.role === "supervisor")); }, []);
-  // glass detail panel: hover (desktop, after a short pause), click / tap, or Enter on a focused trained card
-  const [detail, setDetail] = useState<{ id: string; name: string } | null>(null);
-  const opener = useRef<HTMLElement | null>(null);
-  const hoverTimer = useRef<number | null>(null);
-  const canHover = () => typeof window !== "undefined" && window.matchMedia("(hover: hover) and (pointer: fine)").matches;
-  const openDetail = (el: HTMLElement, id: string, name: string) => { opener.current = el; setDetail({ id, name }); };
-  const closeDetail = () => { setDetail(null); const el = opener.current; window.setTimeout(() => el?.focus(), 0); };
-  const fromControl = (target: EventTarget | null) => target instanceof HTMLElement && !!target.closest("input, button, a, select, label, textarea");
-  const cardProps = (status: ObjectTrainingStatus) => status.status !== "Trained" ? {} : {
-    tabIndex: 0, "aria-haspopup": "dialog" as const, "aria-label": `${status.objectName}: open details`, "data-detail": "1",
-    onClick: (event: React.MouseEvent<HTMLElement>) => { if (!fromControl(event.target)) openDetail(event.currentTarget, status.objectId, status.objectName); },
-    onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => { if (event.key === "Enter" && event.target === event.currentTarget) { event.preventDefault(); openDetail(event.currentTarget, status.objectId, status.objectName); } },
-    onMouseEnter: (event: React.MouseEvent<HTMLElement>) => { if (!canHover() || detail) return; const el = event.currentTarget; hoverTimer.current = window.setTimeout(() => openDetail(el, status.objectId, status.objectName), 700); },
-    onMouseLeave: () => { if (hoverTimer.current) window.clearTimeout(hoverTimer.current); hoverTimer.current = null; },
-  };
-  return <div className="object-library-panel" role="tabpanel" id="objects-panel" aria-labelledby="objects-tab" hidden={!active}>
-    <div className="panel-intro"><div><h3>{objectViewCopy.title}</h3><p>{objectViewCopy.description}</p></div><span className="sample-badge">{objectViewCopy.sampleBadge}</span></div>
-    {loading ? <div className="object-status-grid" aria-label="Loading object status">{objectCategories.map((item) => <div className="object-status-card status-skeleton" key={item.id}><span /><span /><span /></div>)}</div> : error ? <div className="evaluation-state error-state" role="alert"><AlertCircle size={17} /><p>{objectViewCopy.error}</p></div> : statuses.length === 0 ? <div className="evaluation-empty"><p>{objectViewCopy.empty}</p></div> : <div className="object-status-grid">{statuses.map((status) => {
-      const category = objectCategories.find((item) => item.id === status.objectId);
-      return <article className={`object-status-card ${status.status === "Trained" ? "has-detail" : ""}`} key={status.objectId} {...cardProps(status)}><div className="object-status-head"><span className={`${mono} object-code`}>{category?.code ?? "CUS"}</span>{status.backbone && <span className={`${mono} object-code`}>{status.backbone}</span>}</div><h4>{status.objectName}</h4><span className={`object-status-badge ${status.status === "Trained" ? "trained" : "not-trained"}`}>{status.status}</span><p>{status.status === "Trained" ? (status.goodImageCount != null ? objectViewCopy.trainedImages(status.goodImageCount) : objectViewCopy.imageCountUnavailable) : status.status === "Not trained" ? objectViewCopy.untrainedImages : status.status}</p><small className={mono}>{objectViewCopy.lastTrained} · {status.lastTrainedAt ? new Date(status.lastTrainedAt).toLocaleString() : "—"}</small>{status.needsRetrain && <span className="retrain-badge" title="Trained before the current blur check. Retrain with the same photos to turn it back on."><RefreshCw size={11} /> Retrain recommended: blur check is off</span>}{status.status === "Trained" && <StrictnessControl id={status.objectId} value={status.strictness ?? 1} canEdit={canRemove} onSaved={onChanged} />}{canRemove && status.status !== "Not trained" && status.status !== "Training" && <RemovePart id={status.objectId} name={status.objectName} onRemoved={onChanged} />}</article>;
-    })}</div>}
-    <p className="object-state-note">{objectViewCopy.demoNote}</p>
-    <PartDetailPanel id={detail?.id ?? ""} name={detail?.name ?? ""} open={!!detail} onClose={closeDetail} />
-  </div>;
-}
-
 /** Per-part strictness. Inspectors/supervisors drag (saved on release); operators see the value. */
-function StrictnessControl({ id, value, canEdit, onSaved }: { id: string; value: number; canEdit: boolean; onSaved?: () => void }) {
+export function StrictnessControl({ id, value, canEdit, onSaved }: { id: string; value: number; canEdit: boolean; onSaved?: () => void }) {
   const [v, setV] = useState(value);
   const [state, setState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
