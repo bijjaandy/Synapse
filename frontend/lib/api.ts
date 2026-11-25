@@ -26,6 +26,7 @@ export type InspectionResult = {
   gridSize: number;
   backbone: string;
   rotations: number;
+  closestGood: number | null;   // index of the most similar training photo (null for older models)
 };
 
 export type InspectionRecord = {
@@ -144,7 +145,7 @@ export async function getTrainStatus(jobId: string): Promise<TrainStatus> {
 
 type RawPredict = { label: string; score: number; threshold: number; unsure_band: [number, number]; ms: number;
                     reasons: string[]; regions: Region[]; grid: number[]; grid_size: number; backbone: string;
-                    rotations: number; inspection_id: number | null; heatmap_png_base64?: string };
+                    rotations: number; closest_good?: number | null; inspection_id: number | null; heatmap_png_base64?: string };
 
 function gridImage(grid: number[], size: number, paint: (v: number) => [number, number, number]): string {
   if (typeof document === "undefined") return "";
@@ -179,6 +180,7 @@ export async function inspect(objectId: string, file: File, options: { log?: boo
     gridSize: r.grid_size,
     backbone: r.backbone,
     rotations: r.rotations,
+    closestGood: r.closest_good ?? null,
   };
 }
 
@@ -365,3 +367,5 @@ export async function deleteObject(name: string, purgeLog = false) {
   return call<{ deleted: string; log_rows_removed: number }>(`/objects/${encodeURIComponent(name)}?purge_log=${purgeLog}`,
     { method: "DELETE", headers: authHeaders() });
 }
+
+export const goodPhotoUrl = (objectId: string, index: number) => `${API_URL}/objects/${encodeURIComponent(objectId)}/good/${index}.jpg`;

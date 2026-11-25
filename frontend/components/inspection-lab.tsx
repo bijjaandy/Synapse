@@ -6,7 +6,7 @@ import { AnimatePresence, animate as animateMotion, motion, useMotionValue, useM
 import useSWR from "swr";
 import { EvaluationPanel, JudgePanel, LimitationsPanel, ObjectLibraryPanel, ProjectTargetsStrip, RuntimeStatusPanel } from "@/components/inspection-panels";
 import { Activity, ArrowDown, ArrowRight, Box, Check, ChevronDown, CircleHelp, Clock3, Download, FileImage, Gauge, Layers3, LoaderCircle, Menu, Moon, Plus, ScanLine, ShieldCheck, Sun, TriangleAlert, Upload, Volume2, VolumeX, Wifi, WifiOff, X } from "lucide-react";
-import { API_URL, checkHealth, getHistory, getLoggedParts, getObjectStatuses, getShiftReport, getTrainStatus, inspect, logCsvUrl, markGood, reportPageUrl, trainObject, type AutoEstimate, type Backbone, type InspectionRecord, type InspectionResult, type ObjectTrainingStatus, type ShiftReport, type TrainState } from "@/lib/api";
+import { API_URL, goodPhotoUrl, checkHealth, getHistory, getLoggedParts, getObjectStatuses, getShiftReport, getTrainStatus, inspect, logCsvUrl, markGood, reportPageUrl, trainObject, type AutoEstimate, type Backbone, type InspectionRecord, type InspectionResult, type ObjectTrainingStatus, type ShiftReport, type TrainState } from "@/lib/api";
 import { FeedbackButton, HeatLegend, InspectionStage3D, LayerMap, VerdictReasons, WebcamCapture } from "@/components/live-panels";
 import { heatOverlayUrl } from "@/lib/heatmaps";
 import { useVoice } from "@/lib/voice";
@@ -277,6 +277,7 @@ export default function InspectionLab({ view: page }: { view?: LabView } = {}) {
   const scoreNeedle = useTransform(scoreProgress, [0, 1], ["0%", "100%"]);
   const [inspecting, setInspecting] = useState(false);
   const [view, setView] = useState<"3d" | "2d" | "layers">("3d");
+  const [compareGood, setCompareGood] = useState(false);
   const [heatOpacity, setHeatOpacity] = useState(85);
   const heatOverlay = useMemo(() => (inspection?.grid?.length ? heatOverlayUrl(inspection.grid, inspection.gridSize, { size: 384 }) : null), [inspection]);
   const [showOutline, setShowOutline] = useState(true);
@@ -464,6 +465,8 @@ export default function InspectionLab({ view: page }: { view?: LabView } = {}) {
               <div className="comparison-image"><CornerFrame><div className="live-square">{photoUrl && <img src={photoUrl} alt="Inspected photo" className="live-fill comparison-base" />}{heatOverlay && <img src={heatOverlay} alt="Heatmap of areas that differ from the good parts" className="live-fill heat-overlay" style={{ opacity: heatOpacity / 100 }} />}{showOutline && inspection.regions.map((r, i) => <span key={i} className="region-ring" style={{ left: `${r.x * 100}%`, top: `${r.y * 100}%` }}><b>{i + 1}</b></span>)}</div><span className="image-tag">{pageCopy.originalHeatmapLabel}</span></CornerFrame></div>
               <div className="image-controls"><label className="opacity-control" htmlFor="heat-opacity"><span>{pageCopy.heatmapOpacity}</span><input id="heat-opacity" type="range" min="0" max="100" value={heatOpacity} onChange={(event) => setHeatOpacity(Number(event.target.value))} aria-label="Heatmap opacity" /><span className={mono}>{heatOpacity}%</span></label><label className="outline-control"><input type="checkbox" checked={showOutline} onChange={(event) => setShowOutline(event.target.checked)} /><span className="check-box"><Check size={11} /></span><span>Defect pins</span></label></div>
               <HeatLegend />
+              {inspection.closestGood != null && inspectedObject && <label className="outline-control compare-good-toggle"><input type="checkbox" checked={compareGood} onChange={(event) => setCompareGood(event.target.checked)} /><span className="check-box"><Check size={11} /></span><span>Compare with closest good part</span></label>}
+              {compareGood && inspection.closestGood != null && inspectedObject && <div className="compare-good"><figure><img src={photoUrl ?? ""} alt="This part" /><figcaption>This part</figcaption></figure><figure><img src={goodPhotoUrl(inspectedObject, inspection.closestGood)} alt="Closest good part it learned from" /><figcaption>Closest good part it learned from</figcaption></figure></div>}
             </>}
             <p className="result-explanation">{inspection ? RESULT_TEXT[inspection.verdict] : pageCopy.resultExplanation}</p>
           </>}

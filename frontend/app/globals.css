@@ -956,3 +956,10 @@ body { font-family:var(--font-ui); font-size:16px; }
 /* Ask AI why (dashboard result) */
 .ask-ai { display: inline-flex; align-items: center; gap: .35rem; margin-top: .5rem; text-decoration: none; }
 .ask-ai-answer { margin: .5rem 0 0; font-size: .85rem; line-height: 1.5; color: var(--cream); opacity: .9; }
+
+/* compare with the closest good training photo (2D view) */
+.compare-good-toggle { margin-top: .6rem; }
+.compare-good { display: grid; grid-template-columns: 1fr 1fr; gap: .7rem; margin-top: .6rem; }
+.compare-good figure { margin: 0; display: grid; gap: .3rem; }
+.compare-good img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 10px; background: #0003; }
+.compare-good figcaption { font-size: .75rem; color: var(--mist); text-align: center; }

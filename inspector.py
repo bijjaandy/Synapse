@@ -169,6 +169,7 @@ class Inspector:
         self.bank = None
         self.strictness = 1.0  # set per part by a QC inspector; the calibrated values below stay as trained
         self._thr = self._low = self._high = None
+        self.good_desc = None  # one mean patch feature per training photo (same order as the photos), for "closest good part"
         self.quality = None  # brightness / sharpness range of the training photos, for the "retake photo" check
 
     def _scores(self, imgs, batch=16, keep_patches=False):
@@ -245,8 +246,17 @@ class Inspector:
             fakes = [fake_defect(im, rng, subtle=bool(j % 2)) for im in val_imgs for j in range(fakes_per_img * 2)]
             s, _ = self._scores(fakes)
             log(f"self-check: {(s >= self.thr).mean():.0%} of {len(s)} fake defects flagged")
+        self.good_desc = self._global_desc(paths)
         log(f"total training time {time.perf_counter() - t0:.1f}s")
         return self
+
+    def _global_desc(self, paths, batch=16):
+        """Mean of each photo's patch features, L2-normalised: one small vector per photo."""
+        out = []
+        for i in range(0, len(paths), batch):
+            f = self.fx([load_image(p) for p in paths[i:i + batch]]).mean(1)
+            out.append(torch.nn.functional.normalize(f, dim=1))
+        return torch.cat(out)
 
     def _set_quality(self, imgs):
         stats = np.array([photo_stats(im) for im in imgs])
@@ -306,7 +316,11 @@ class Inspector:
         if label in ("defective", "unsure"):  # smoothing lowers peaks, so cap the level to always mark the worst area
             regions = defect_regions(amap, min(self.thr, 0.75 * float(amap.max())))
         small = zoom(amap, grid / SIZE, order=1) / self.thr
-        return {"label": label, "score": score, "ms": ms, "map": amap, "reasons": reasons, "regions": regions,
+        closest = None
+        if self.good_desc is not None:  # models trained before this feature don't have it
+            q = torch.nn.functional.normalize(self.fx([img]).mean(1), dim=1)
+            closest = int(torch.cdist(q, self.good_desc).argmin())
+        return {"closest_good": closest, "label": label, "score": score, "ms": ms, "map": amap, "reasons": reasons, "regions": regions,
                 "grid": np.round(small, 3).ravel().tolist(), "grid_size": grid}
 
     def add_good(self, path):
@@ -321,7 +335,7 @@ class Inspector:
     def save(self, path):
         torch.save({"bank": self.bank, "low": self._low, "high": self._high, "thr": self._thr,
                     "backbone": self.fx.name, "rotations": self.rotations, "quality": self.quality,
-                    "strictness": self.strictness}, path)
+                    "strictness": self.strictness, "good_desc": self.good_desc}, path)
 
     @classmethod
     def load(cls, path, extractor=None):
@@ -331,6 +345,7 @@ class Inspector:
             extractor = FeatureExtractor(backbone)
         m = cls(extractor, rotations=d.get("rotations", 1))
         m.bank, m.low, m.high, m.thr = d["bank"], d["low"], d["high"], d["thr"]
+        m.good_desc = d.get("good_desc")  # None for older models: closest good part is hidden
         m.strictness = float(d.get("strictness", 1.0))  # files from before the strictness slider are 1.0
         m.quality = d.get("quality")  # older models have no photo-quality stats; that check is then skipped
         return m

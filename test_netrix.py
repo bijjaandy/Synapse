@@ -175,3 +175,15 @@ def test_strictness_per_part(netrix):
     import torch
     d = torch.load(path); d.pop("strictness"); torch.save(d, path)
     assert server.Inspector.load(path).strictness == 1.0
+
+
+def test_closest_good_part(netrix):
+    c = netrix
+    train_toy(c, "closest_t", n=30, backbone="resnet18")
+    r = c.post("/objects/closest_t/predict?log=false", files={"file": ("p.png", png(part(np.random.default_rng(12))[0]))}).json()
+    assert isinstance(r["closest_good"], int) and 0 <= r["closest_good"] < 30
+    img = c.get(f"/objects/closest_t/good/{r['closest_good']}.jpg")
+    assert img.status_code == 200 and img.headers["content-type"] == "image/jpeg"
+    assert c.get("/objects/closest_t/good/30.jpg").status_code == 404
+    assert c.get("/objects/closest_t/good/-1.jpg").status_code == 404
+    assert c.get("/objects/nope_part/good/0.jpg").status_code == 404

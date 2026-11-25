@@ -129,6 +129,14 @@ def main():
             page.locator(".conveyor-switch input").uncheck()
             page.click(".live-cam-inspect >> text=Stop")
             page.click("text=2D heatmap"); page.wait_for_timeout(500); print("2D legend:", page.locator(".heat-legend").count())
+            cg = page.locator(".compare-good-toggle input")
+            print("compare toggle:", cg.count(), end=" ")
+            if cg.count():
+                page.click(".compare-good-toggle"); page.wait_for_timeout(1500)  # the input is hidden behind the styled box
+                print("-> captions:", page.locator(".compare-good figcaption").all_inner_texts(), "| images loaded:",
+                      page.evaluate("[...document.querySelectorAll('.compare-good img')].map(i => i.complete && i.naturalWidth > 0)"))
+                page.locator(".result-panel").screenshot(path=str(SHOTS / "compare_good.png"))
+                page.click(".compare-good-toggle")
             page.click("text=Layer map"); page.wait_for_timeout(1500); print("layer sheets:", page.locator(".layer-sheet").count(), "images:", page.locator(".layer-sheet img").count())
             page.click("text=Side by side") if page.locator("text=Side by side").count() else None
             page.click("text=3D view")

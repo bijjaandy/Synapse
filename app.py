@@ -16,7 +16,7 @@ from pathlib import Path
 import torch
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
+from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from PIL import Image
@@ -224,6 +224,18 @@ def status(name: str):
     raise HTTPException(404, f"unknown object '{name}'")
 
 
+@app.get("/objects/{name}/good/{index}.jpg")
+def good_photo(name: str, index: int):
+    """One of the part's training photos by index (the `closest_good` from /predict). Only our own saved files."""
+    check_name(name)
+    files = list_images(DATA / name / "good") if (DATA / name / "good").is_dir() else []
+    if not 0 <= index < len(files):
+        raise HTTPException(404, "no such training photo")
+    buf = io.BytesIO()
+    Image.open(files[index]).convert("RGB").save(buf, "JPEG", quality=90)
+    return Response(buf.getvalue(), media_type="image/jpeg")
+
+
 class StrictnessBody(BaseModel):
     factor: float
 
@@ -275,7 +287,8 @@ def predict(name: str, file: UploadFile = File(...), heatmap: bool = True, log: 
     out = {"label": r["label"], "score": round(r["score"], 4), "ms": round(r["ms"], 1),
            "threshold": round(m.thr, 4), "unsure_band": [round(m.low, 4), round(m.high, 4)],
            "reasons": r["reasons"], "regions": r["regions"], "grid": r["grid"], "grid_size": r["grid_size"],
-           "backbone": m.fx.name, "rotations": m.rotations, "strictness": m.strictness}
+           "backbone": m.fx.name, "rotations": m.rotations, "strictness": m.strictness,
+           "closest_good": r.get("closest_good")}
     buf = io.BytesIO()
     overlay(io.BytesIO(data), r["map"], buf, vmax=m.high * 1.5)
     png = buf.getvalue()
