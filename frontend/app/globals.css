@@ -1355,3 +1355,39 @@ body { font-family:var(--font-ui); font-size:16px; }
 .library-empty-state .add-product-card { width: min(320px, 100%); }
 @media (prefers-reduced-motion: reduce) { .add-product-card, .gallery-add { animation: none; } .gallery, .gallery-stage { transition: none; } }
 @media (max-width: 640px) { .gallery-stage { height: 360px; } .gallery-card { width: 180px; left: -90px; height: 280px; } }
+
+/* page transition (app pages only): fade + 12 px slide, 250 ms; 'backwards' leaves no transform behind */
+.netrix-page { animation: page-in .25s cubic-bezier(.22, 1, .36, 1) backwards; }
+@keyframes page-in { from { opacity: 0; transform: translateY(12px); } }
+@media (prefers-reduced-motion: reduce) { .netrix-page { animation: page-fade .15s ease backwards; } }
+@keyframes page-fade { from { opacity: 0; } }
+/* phone top bar: one tidy row of controls (status dot only, no role line, icon-only log out) */
+@media (max-width: 640px) {
+  .netrix-topbar { gap: .6rem; padding: .55rem .8rem; }
+  .netrix-topbar nav { order: 3; width: 100%; overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; }
+  .netrix-topbar nav a { white-space: nowrap; padding: .4rem .7rem; font-size: .85rem; }
+  .netrix-top-actions { margin-left: auto; gap: .45rem; }
+  .netrix-server { font-size: 0 !important; gap: 0; }
+  .netrix-user small { display: none; }
+  .netrix-user strong { font-size: .78rem; }
+  .netrix-logout { font-size: 0 !important; padding: .45rem !important; }
+  .netrix-logout svg { width: 16px; height: 16px; }
+  .lang-switch { font-size: .72rem; }
+  .netrix-brand small { display: none; }
+}
+
+/* ---------- review fixes ---------- */
+/* no blur filters over WebGL: the bars and the landing text panels float over 3D canvases */
+.netrix-topbar, .landing-top { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; background: color-mix(in srgb, #F1E9D2 97%, transparent) !important; }
+.pipeline-text, .pipeline-text.intro { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+/* one header per page: the old template section titles and the connection banner repeat the page intro and the top bar */
+.netrix-app .inspect-heading, .netrix-app .tools-section > .section-heading, .netrix-app .history-head > .section-heading, .netrix-app .demo-banner { display: none; }
+.netrix-app .inspect-section, .netrix-app .tools-section, .netrix-app .history-section { padding-top: 12px; }
+.netrix-app .history-head { justify-content: flex-end; }
+/* summary lists: label left, value right, on every width (the date range used to push past the card) */
+.summary-dl { grid-template-columns: minmax(0, 1fr); }
+.summary-dl > div { display: flex; justify-content: space-between; align-items: baseline; gap: .8rem; min-width: 0; }
+.summary-dl dd { white-space: normal; overflow-wrap: anywhere; }
+/* toolbar: the Ask AI link lines up with the other icon buttons */
+.tool-button.ask-ai { margin-top: 0; }
+.img-missing { display: grid; place-items: center; aspect-ratio: 1; border-radius: 10px; background: repeating-linear-gradient(45deg, color-mix(in srgb, #6B8E7B 10%, transparent) 0 8px, transparent 8px 16px); color: #243B35; font-size: .78rem; opacity: .8; text-align: center; padding: 8px; }

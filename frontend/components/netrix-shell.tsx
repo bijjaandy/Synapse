@@ -68,7 +68,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     {session === undefined ? <div className="netrix-wait" role="status">Checking your login…</div>
       : !session ? <div className="netrix-wait" role="status">Taking you to the login page…</div>
       : !allowed ? <div className="netrix-denied" role="alert"><ShieldAlert size={22} /><h2>{session.role_name} logins can’t open this page.</h2><p>{page?.label} is for {page?.roles.map((r) => ({ operator: "Operators", inspector: "QC Inspectors", supervisor: "Supervisors" })[r]).join(", ")}.</p><Link href="/inspect" className="button-primary">Go to Inspect</Link></div>
-      : children}
+      : <div key={path} className="netrix-page">{children}</div>}
   </div>;
 }
 

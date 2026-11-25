@@ -14,6 +14,13 @@ const partName = (id: string) => objectCategories.find((c) => c.id === id)?.name
 
 // ---------- human verification ----------
 
+/** An image that shows a quiet placeholder when the file isn't there (older checks were logged without the photo). */
+function SafeImg({ src, alt }: { src: string; alt: string }) {
+  const [missing, setMissing] = useState(false);
+  return missing ? <div className="img-missing" role="img" aria-label={`${alt}: not saved`}><span>Not saved for this check</span></div>
+    : <img src={src} alt={alt} onError={() => setMissing(true)} />;
+}
+
 export function VerificationQueue() {
   const { data: queue = [], error, isLoading, mutate } = useSWR<QueueItem[]>("verify-queue", getVerifyQueue, { refreshInterval: 10000 });
   const reducedMotion = useReducedMotion() ?? false;
@@ -41,8 +48,8 @@ function VerifyItem({ item, onDone }: { item: QueueItem; onDone: () => void }) {
   }
   return <article className="verify-item">
     <div className="verify-images">
-      <figure><img src={photoUrl(item.id)} alt={`Photo of check #${item.id}`} /><figcaption>Photo</figcaption></figure>
-      <figure><img src={heatmapUrl(item.id)} alt={`Heatmap of check #${item.id}`} /><figcaption>Where it differs</figcaption></figure>
+      <figure><SafeImg src={photoUrl(item.id)} alt={`Photo of check #${item.id}`} /><figcaption>Photo</figcaption></figure>
+      <figure><SafeImg src={heatmapUrl(item.id)} alt={`Heatmap of check #${item.id}`} /><figcaption>Where it differs</figcaption></figure>
     </div>
     <div className="verify-info">
       <h3>#{String(item.id).padStart(4, "0")} · {item.display_name ?? partName(item.object)}</h3>
