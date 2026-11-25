@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import useSWR from "swr";
 import { LogOut, ShieldAlert } from "lucide-react";
-import { checkHealth, checkSession, logout, type Role, type Session } from "@/lib/api";
+import { checkHealth, checkSessionState, logout, type Role, type Session } from "@/lib/api";
 import { useLang } from "@/lib/voice";
 
 export const PAGES: { href: string; label: string; roles: Role[] }[] = [
@@ -17,8 +17,8 @@ export const PAGES: { href: string; label: string; roles: Role[] }[] = [
   { href: "/summary", label: "Summary", roles: ["supervisor"] },
 ];
 
-export function BrandMark({ small = false }: { small?: boolean }) {
-  return <Link href="/" className={`netrix-brand ${small ? "small" : ""}`} aria-label="Netrix IQ home">
+export function BrandMark({ small = false, href = "/" }: { small?: boolean; href?: string }) {
+  return <Link href={href} className={`netrix-brand ${small ? "small" : ""}`} aria-label={href === "/" ? "Netrix IQ home" : "Netrix IQ: go to Inspect"}>
     <img src="/brand/netrix-mark.png" alt="" className="netrix-mark" />
     <span><strong>NETRIX IQ</strong><small>Learn from perfection. Detect the rest.</small></span>
   </Link>;
@@ -32,11 +32,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { data: serverOk } = useSWR("backend-health", checkHealth, { refreshInterval: 5000 });
   const [lang, setLang] = useLang();
 
-  useEffect(() => {
-    checkSession().then((s) => {
+  useEffect(() => {  // on every page, when the window comes back into focus, and once a minute
+    let gone = false;
+    const check = () => checkSessionState().then(({ session: s, expired }) => {
+      if (gone) return;
       setSession(s);
-      if (!s) router.replace(`/login?next=${encodeURIComponent(path)}`);
+      // replace, not push: Back must never bounce between /login and a protected page
+      if (!s) router.replace(`/login?next=${encodeURIComponent(path)}${expired ? "&expired=1" : ""}`);
     });
+    check();
+    const timer = window.setInterval(check, 60_000);
+    window.addEventListener("focus", check);
+    return () => { gone = true; window.clearInterval(timer); window.removeEventListener("focus", check); };
   }, [path, router]);
 
   const page = PAGES.find((p) => path.startsWith(p.href));
@@ -44,14 +51,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return <div className="netrix-app">
     <header className="netrix-topbar">
-      <BrandMark small />
+      <BrandMark small href={session ? "/inspect" : "/"} />
       {session && <nav aria-label="Pages">{PAGES.filter((p) => p.roles.includes(session.role)).map((p) =>
         <Link key={p.href} href={p.href} className={path.startsWith(p.href) ? "active" : ""} aria-current={path.startsWith(p.href) ? "page" : undefined}>{p.label}</Link>)}</nav>}
       <div className="netrix-top-actions">
         <div className="lang-switch" role="group" aria-label="Language"><button type="button" aria-pressed={lang === "en"} className={lang === "en" ? "active" : ""} onClick={() => setLang("en")}>EN</button><span aria-hidden="true">|</span><button type="button" lang="kn" aria-pressed={lang === "kn"} className={lang === "kn" ? "active" : ""} onClick={() => setLang("kn")}>ಕನ್ನಡ</button></div>
         <span className={`netrix-server ${serverOk === false ? "down" : serverOk ? "up" : ""}`}>{serverOk === undefined ? "Checking model" : serverOk ? "Model connected" : "Server offline"}</span>
         {session && <span className="netrix-user"><strong>{session.display}</strong><small>{session.role_name}</small></span>}
-        {session && <button type="button" className="netrix-logout" onClick={async () => { await logout(); router.replace("/login"); }}><LogOut size={14} /> Log out</button>}
+        {session && <button type="button" className="netrix-logout" onClick={async () => { await logout(); router.replace("/"); }}><LogOut size={14} /> Log out</button>}
       </div>
     </header>
     {session === undefined ? <div className="netrix-wait" role="status">Checking your login…</div>

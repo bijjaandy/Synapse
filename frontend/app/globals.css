@@ -1216,3 +1216,7 @@ body { font-family:var(--font-ui); font-size:16px; }
 .inspect-train-first { display: grid; gap: 10px; justify-items: start; padding: 14px; border-radius: 14px; border: 1.5px dashed color-mix(in srgb, var(--sage) 70%, transparent); color: var(--forest); }
 .inspect-train-first p { margin: 0; font-weight: 600; }
 .inspect-train-first .button-primary { display: inline-flex; align-items: center; gap: 6px; text-decoration: none; }
+
+.login-back { display: inline-block; margin-bottom: 14px; font-size: .9rem; color: var(--forest); text-decoration: none; opacity: .85; }
+.login-back:hover { opacity: 1; text-decoration: underline; text-underline-offset: 3px; }
+.login-expired { margin: 12px 0 0; padding: 10px 14px; border-radius: 12px; background: color-mix(in srgb, #E0B341 28%, transparent); color: #5a4300; font-weight: 600; }

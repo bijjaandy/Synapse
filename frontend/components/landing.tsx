@@ -5,6 +5,7 @@ import Link from "next/link";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { ArrowDown, ArrowRight, Camera, ClipboardCheck, Cpu, Factory, LineChart, ScanLine, ShieldCheck, Timer, WifiOff } from "lucide-react";
 import { BrandMark } from "@/components/netrix-shell";
+import { checkSession } from "@/lib/api";
 
 const STAGE_TEXT = [
   { kicker: "Netrix IQ", title: "Learn from perfection. Detect the rest.",
@@ -48,6 +49,8 @@ export default function Landing() {
   const host = useRef<HTMLDivElement>(null);
   const scene = useRef<{ setProgress: (p: number) => void; dispose: () => void } | null>(null);
   const [stage, setStage] = useState(0);
+  const [signedIn, setSignedIn] = useState(false);  // "Open app" instead of "Sign in" when a session exists
+  useEffect(() => { checkSession().then((s) => setSignedIn(!!s)); }, []);
   const [progress, setProgress] = useState(0);
   const [noWebgl, setNoWebgl] = useState(false);
   const reducedMotion = useReducedMotion() ?? false;
@@ -85,7 +88,7 @@ export default function Landing() {
     <header className="landing-top">
       <BrandMark />
       <nav aria-label="Landing"><a href="#workflow">How it works</a><a href="#who">Who it’s for</a><a href="#numbers">Results</a></nav>
-      <Link href="/login" className="landing-cta">Sign in <ArrowRight size={14} /></Link>
+      <Link href={signedIn ? "/inspect" : "/login"} className="landing-cta">{signedIn ? "Open app" : "Sign in"} <ArrowRight size={14} /></Link>
     </header>
 
     <section ref={section} className="pipeline" aria-label="How Netrix IQ inspects a part, layer by layer">
@@ -99,7 +102,7 @@ export default function Landing() {
               <span className="pipeline-kicker">{st.kicker}</span>
               {stage === 0 ? <h1>{st.title}</h1> : <h2>{st.title}</h2>}
               <p>{st.text}</p>
-              {stage === STAGE_TEXT.length - 1 && <Link href="/login" className="button-primary pipeline-go">Start inspecting <ArrowRight size={15} /></Link>}
+              {stage === STAGE_TEXT.length - 1 && <Link href={signedIn ? "/inspect" : "/login"} className="button-primary pipeline-go">Start inspecting <ArrowRight size={15} /></Link>}
             </motion.div>
           </AnimatePresence>
         </div>
@@ -128,7 +131,7 @@ export default function Landing() {
       <h2>Measured, not promised</h2>
       <div className="numbers-grid">{NUMBERS.map((n) => <div key={n.label}>{n.icon}<strong>{n.big}</strong><span>{n.label}</span><small>{n.limit}</small></div>)}</div>
       <p className="landing-note">MVTec AD, all 15 objects, resnet18 on a Colab CPU. Mean accuracy 0.881; weakest objects are screw, grid and pill.</p>
-      <Link href="/login" className="button-primary landing-final">Sign in to Netrix IQ <ArrowRight size={15} /></Link>
+      <Link href={signedIn ? "/inspect" : "/login"} className="button-primary landing-final">{signedIn ? "Open the app" : "Sign in to Netrix IQ"} <ArrowRight size={15} /></Link>
     </section>
 
     <footer className="landing-footer"><BrandMark small /><span>SYNAPSE 2.0 · Problem statement 12</span></footer>

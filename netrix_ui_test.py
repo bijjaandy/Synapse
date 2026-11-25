@@ -49,6 +49,8 @@ def main():
         page.on("pageerror", lambda e: errors.append(f"pageerror: {e}"))
 
         def login_as(role):
+            if page.url.startswith(URL):  # the login page forwards a signed-in user, so sign the last one out first
+                page.evaluate("localStorage.removeItem('netrix.session')")
             page.goto(f"{URL}/login", wait_until="networkidle")
             page.locator(".login-role", has_text={"operator": "Line Operator", "inspector": "QC Inspector",
                                                   "supervisor": "Shift Supervisor"}[role]).locator(".login-demo").click()
@@ -273,8 +275,27 @@ def main():
             print("kpis:", " | ".join(page.locator(".kpi").all_inner_texts()).replace("\n", " "))
             page.screenshot(path=str(SHOTS / "summary.png"), full_page=True)
 
+        def navigation():
+            # signed in (supervisor from the summary step): landing says "Open app", the app logo goes to Inspect
+            page.goto(URL, wait_until="domcontentloaded"); page.wait_for_timeout(1500)
+            print("landing CTA while signed in:", page.inner_text(".landing-cta").strip(), "->", page.get_attribute(".landing-cta", "href"))
+            page.goto(f"{URL}/history", wait_until="networkidle")
+            print("app logo ->", page.get_attribute(".netrix-topbar .netrix-brand", "href"))
+            # log out -> landing page, which offers "Sign in" again
+            page.click(".netrix-logout"); page.wait_for_url(f"{URL}/", timeout=15000); page.wait_for_timeout(1000)
+            print("after log out:", page.url, "| CTA:", page.inner_text(".landing-cta").strip())
+            # a session the server no longer accepts -> /login?next=...&expired=1 with the message; Back doesn't loop
+            page.evaluate("""localStorage.setItem('netrix.session', JSON.stringify({token: 'not-a-real-token', username: 'operator',
+                             role: 'operator', role_name: 'Operator', display: 'Line Operator'}))""")
+            page.goto(f"{URL}/history", wait_until="domcontentloaded")
+            page.wait_for_url("**/login**", timeout=15000); page.wait_for_selector(".login-expired", timeout=10000)
+            print("expired session ->", page.url.replace(URL, ""), "|", page.inner_text(".login-expired"), "| back link:", page.get_attribute(".login-back", "href"))
+            page.go_back(); page.wait_for_timeout(1500)
+            print("Back from login ->", page.url.replace(URL, "") or "/", "(not /history again)")
+
         for name, fn in [("landing", landing), ("login + role guard", guard), ("dashboard", dashboard),
-                         ("evaluation", evaluation), ("objects", objects), ("history", history), ("summary", summary)]:
+                         ("evaluation", evaluation), ("objects", objects), ("history", history), ("summary", summary),
+                         ("navigation", navigation)]:
             step(name, fn)
         browser.close()
 

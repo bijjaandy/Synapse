@@ -342,10 +342,19 @@ export async function login(username: string, password: string): Promise<Session
   return s;
 }
 /** Confirms the saved session is still valid on the server (it forgets logins when restarted). */
-export async function checkSession(): Promise<Session | null> {
+/** The stored login, checked with the server. Only a 401 / 403 means it ended ("expired"); if the server can't be
+ *  reached we keep the session, so a server restart or a cable pulled out doesn't sign people out. */
+export async function checkSessionState(): Promise<{ session: Session | null; expired: boolean }> {
   const s = loadSession();
-  if (!s) return null;
-  try { await call("/auth/me", { headers: authHeaders() }); return s; } catch { saveSession(null); return null; }
+  if (!s) return { session: null, expired: false };
+  let r: Response;
+  try { r = await fetch(`${API_URL}/auth/me`, { headers: authHeaders() }); }
+  catch { return { session: s, expired: false }; }
+  if (r.status === 401 || r.status === 403) { saveSession(null); return { session: null, expired: true }; }
+  return { session: s, expired: false };
+}
+export async function checkSession(): Promise<Session | null> {
+  return (await checkSessionState()).session;
 }
 export async function logout() {
   await call("/auth/logout", { method: "POST", headers: authHeaders() }).catch(() => undefined);

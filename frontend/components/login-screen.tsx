@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion, useReducedMotion } from "framer-motion";
 import { ClipboardCheck, Factory, LineChart, LoaderCircle, LogIn } from "lucide-react";
-import { login, type Role } from "@/lib/api";
+import { login, type Role, checkSession } from "@/lib/api";
 import { BrandMark } from "@/components/netrix-shell";
 
 const ROLES: { role: Role; title: string; who: string; problem: string; does: string[]; icon: React.ReactNode; demo: [string, string] }[] = [
@@ -24,7 +25,12 @@ const ROLES: { role: Role; title: string; who: string; problem: string; does: st
 
 export default function LoginScreen() {
   const router = useRouter();
-  const next = useSearchParams()?.get("next") ?? "/inspect";
+  const params = useSearchParams();
+  const next = params?.get("next") ?? "/inspect";
+  const expired = params?.get("expired") === "1";
+  useEffect(() => {  // already signed in: go on (replace, so Back doesn't land on the login page again)
+    checkSession().then((s) => { if (s) router.replace(next.startsWith("/") ? next : "/inspect"); });
+  }, [next, router]);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -48,7 +54,9 @@ export default function LoginScreen() {
 
   return <main className="netrix-login">
     <section className="login-who">
+      <Link href="/" className="login-back">← Back to home</Link>
       <BrandMark />
+      {expired && <p className="login-expired" role="status">Your session ended, please sign in again.</p>}
       <h1>Who uses Netrix IQ</h1>
       <p className="login-lede">Factories make thousands of good parts for every bad one, so there are no defect photos to train on. Netrix IQ learns only from good parts and runs on the laptop at the line, with no internet. Three people use it:</p>
       <div className="login-roles">{ROLES.map((r, i) =>
