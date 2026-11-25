@@ -207,6 +207,7 @@ class Inspector:
         t0 = time.perf_counter()
         rng = np.random.default_rng(seed)
         paths = list(good_paths)
+        original = list(paths)  # photo order as given (= the order of data/<id>/good), kept for closest_good
         if len(paths) < 5:
             raise ValueError(f"need at least 5 good images, got {len(paths)}")
         rng.shuffle(paths)
@@ -246,7 +247,7 @@ class Inspector:
             fakes = [fake_defect(im, rng, subtle=bool(j % 2)) for im in val_imgs for j in range(fakes_per_img * 2)]
             s, _ = self._scores(fakes)
             log(f"self-check: {(s >= self.thr).mean():.0%} of {len(s)} fake defects flagged")
-        self.good_desc = self._global_desc(paths)
+        self.good_desc = self._global_desc(original)  # index i = the i-th photo as given, not the shuffled order
         log(f"total training time {time.perf_counter() - t0:.1f}s")
         return self
 

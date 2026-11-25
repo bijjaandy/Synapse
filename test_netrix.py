@@ -321,3 +321,16 @@ def test_export_delete_import_predict(netrix):
     assert imp(zip_with([("model.pt", model), ("product.json", b'{"id": "../x"}')])).status_code == 400
     assert imp(b"not a zip").status_code == 400
     assert c.post("/objects/import", files={"file": ("p.zip", z.content, "application/zip")}).status_code == 401
+
+
+def test_closest_good_is_the_photo_itself(netrix):
+    """Inspecting a training photo must point at that same photo (index = its position in data/<id>/good)."""
+    c = netrix
+    train_toy(c, "closest_self", n=24, backbone="resnet18")
+    files = sorted((server.DATA / "closest_self" / "good").glob("*.png"))
+    assert len(files) == 24
+    for i in (0, 5, 13, 23):
+        r = c.post("/objects/closest_self/predict?log=false", files={"file": ("p.png", files[i].read_bytes())}).json()
+        assert r["closest_good"] == i, (i, r["closest_good"])
+        img = c.get(f"/objects/closest_self/good/{i}.jpg")
+        assert img.status_code == 200
