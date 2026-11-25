@@ -1,4 +1,5 @@
 "use client";
+import { toast } from "@/lib/toast";
 
 import { useEffect, useRef, useState } from "react";
 import useSWR from "swr";
@@ -35,7 +36,7 @@ function VerifyItem({ item, onDone }: { item: QueueItem; onDone: () => void }) {
   async function decide(decision: "good" | "defective") {
     setBusy(decision);
     setError(null);
-    try { await verifyInspection(item.id, decision, note); onDone(); }
+    try { await verifyInspection(item.id, decision, note); toast(decision === "defective" ? `#${item.id} confirmed defective` : `#${item.id} verified as good`); onDone(); }
     catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); setBusy(null); }
   }
   return <article className="verify-item">
@@ -131,7 +132,7 @@ export function AssistantChat() {
     {voice.speaking && <button type="button" className="layers-toggle stop-speaking" onClick={voice.stop}><Square size={11} /> Stop reading</button>}
     <div className="chat-list" ref={list} aria-live="polite">
       {!messages.length && <div className="chat-suggestions">{SUGGESTIONS.map((s) => <button key={s} type="button" onClick={() => send(s)}>{s}</button>)}</div>}
-      {messages.map((m, i) => <div key={i} className={`chat-msg ${m.role}`}><p>{m.content}</p>{m.role === "assistant" && m.source && m.source !== "error" && <small>{m.source === "ollama" ? `${m.model} · ${(m.ms ?? 0) / 1000}s` : "offline answer"}</small>}</div>)}
+      {messages.map((m, i) => <motion.div key={i} layout className={`chat-msg ${m.role}`} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22 }}><p>{m.content}</p>{m.role === "assistant" && m.source && m.source !== "error" && <small>{m.source === "ollama" ? `${m.model} · ${(m.ms ?? 0) / 1000}s` : "offline answer"}</small>}</motion.div>)}
       {busy && <div className="chat-msg assistant"><p><LoaderCircle size={14} className="spin" /> Thinking on this laptop…</p></div>}
     </div>
     <form className="chat-input" onSubmit={(e) => { e.preventDefault(); send(input); }}>

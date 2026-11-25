@@ -1,4 +1,5 @@
 "use client";
+import { toast } from "@/lib/toast";
 
 import { whereWords } from "@/lib/voice";
 import { useEffect, useRef, useState, type InputHTMLAttributes } from "react";
@@ -60,7 +61,7 @@ export function RemovePart({ id, name, onRemoved }: { id: string; name: string; 
   const [err, setErr] = useState<string | null>(null);
   const go = async () => {
     setStep("busy"); setErr(null);
-    try { await deleteObject(id); onRemoved?.(); setStep("idle"); }
+    try { await deleteObject(id); toast(`${name} removed`); onRemoved?.(); setStep("idle"); }
     catch (e) { setErr(e instanceof Error ? e.message : String(e)); setStep("ask"); }
   };
   return <div className="remove-part">
@@ -83,7 +84,7 @@ export function StrictnessControl({ id, value, canEdit, onSaved }: { id: string;
   async function save() {
     if (Math.abs(v - value) < 1e-6) return;
     setState("saving"); setError(null);
-    try { await setStrictness(id, v); setState("saved"); onSaved?.(); }
+    try { await setStrictness(id, v); setState("saved"); toast(`Strictness saved: ${v.toFixed(2)}`); onSaved?.(); }
     catch (cause) { setState("error"); setError(cause instanceof Error ? cause.message : String(cause)); setV(value); }
   }
   if (!canEdit) return <p className="strictness-readonly"><Gauge size={13} /> Strictness <b>{word(value)} {value.toFixed(2)}</b> <small>(set by QC)</small></p>;

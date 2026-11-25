@@ -1,4 +1,6 @@
 "use client";
+import { Toaster } from "@/components/toaster";
+import { motion } from "framer-motion";
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -50,12 +52,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const allowed = session && (!page || page.roles.includes(session.role));
 
   return <div className="netrix-app">
+    <Toaster />
     <header className="netrix-topbar">
       <BrandMark small href={session ? "/inspect" : "/"} />
       {session && <nav aria-label="Pages">{PAGES.filter((p) => p.roles.includes(session.role)).map((p) =>
-        <Link key={p.href} href={p.href} className={path.startsWith(p.href) ? "active" : ""} aria-current={path.startsWith(p.href) ? "page" : undefined}>{p.label}</Link>)}</nav>}
+        <Link key={p.href} href={p.href} className={path.startsWith(p.href) ? "active" : ""} aria-current={path.startsWith(p.href) ? "page" : undefined}>{path.startsWith(p.href) && <motion.span layoutId="nav-pill" className="nav-pill" transition={{ type: "spring", stiffness: 420, damping: 34 }} />}<span>{p.label}</span></Link>)}</nav>}
       <div className="netrix-top-actions">
-        <div className="lang-switch" role="group" aria-label="Language"><button type="button" aria-pressed={lang === "en"} className={lang === "en" ? "active" : ""} onClick={() => setLang("en")}>EN</button><span aria-hidden="true">|</span><button type="button" lang="kn" aria-pressed={lang === "kn"} className={lang === "kn" ? "active" : ""} onClick={() => setLang("kn")}>ಕನ್ನಡ</button></div>
+        <div className="lang-switch" role="group" aria-label="Language"><button type="button" aria-pressed={lang === "en"} className={lang === "en" ? "active" : ""} onClick={() => setLang("en")}>{lang === "en" && <motion.span layoutId="lang-pill" className="seg-pill" />}<span>EN</span></button><span aria-hidden="true">|</span><button type="button" lang="kn" aria-pressed={lang === "kn"} className={lang === "kn" ? "active" : ""} onClick={() => setLang("kn")}>{lang === "kn" && <motion.span layoutId="lang-pill" className="seg-pill" />}<span>ಕನ್ನಡ</span></button></div>
         <span className={`netrix-server ${serverOk === false ? "down" : serverOk ? "up" : ""}`}>{serverOk === undefined ? "Checking model" : serverOk ? "Model connected" : "Server offline"}</span>
         {session && <span className="netrix-user"><strong>{session.display}</strong><small>{session.role_name}</small></span>}
         {session && <button type="button" className="netrix-logout" onClick={async () => { await logout(); router.replace("/"); }}><LogOut size={14} /> Log out</button>}

@@ -9,6 +9,7 @@ import { createProduct, getObjectStatuses, getTrainStatus, productPhotoUrl, trai
 import { objectCategories } from "@/config/content";
 import { FLAG_TEXT, flagOutliers, photoStats, type PhotoFlag, type PhotoStats } from "@/lib/photo-quality";
 import { WebcamCapture } from "@/components/live-panels";
+import { toast } from "@/lib/toast";
 
 const ENOUGH = 20;           // photos we ask for (the server's hard minimum is lower)
 const LIMIT_S = 600;         // PS #12: learn in at most 10 minutes
@@ -47,7 +48,7 @@ function NewProductRow({ onCreated, startOpen = false }: { onCreated: (id: strin
   return <form className="new-product-form" aria-label="New product" onSubmit={async (e) => {
     e.preventDefault(); if (!name.trim() || busy) return;
     setBusy(true); setError(null);
-    try { const p = await createProduct(name.trim(), sku.trim(), description.trim()); setOpen(false); setName(""); setSku(""); setDescription(""); onCreated(p.id); }
+    try { const p = await createProduct(name.trim(), sku.trim(), description.trim()); toast(`Product added: ${p.display_name}`); setOpen(false); setName(""); setSku(""); setDescription(""); onCreated(p.id); }
     catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { setBusy(false); }
   }}>
@@ -151,9 +152,11 @@ export default function TrainWorkspace() {
       }
       if (s.state === "error") throw new Error(s.error ?? "Training failed.");
       setTrain({ phase: "done", elapsed: Math.round(s.trainSeconds ?? s.elapsedSec), progress: 100, log: s.log, backbone: s.backbone });
+      toast(`${name} is trained · ${Math.round(s.trainSeconds ?? s.elapsedSec)} s`);
       setPending([]); setZips([]);
       mutate();
     } catch (cause) {
+      toast("Training failed", "error");
       setTrain((t) => ({ phase: "error", elapsed: t?.elapsed ?? 0, progress: t?.progress ?? 0, log: t?.log ?? [], error: cause instanceof Error ? cause.message : String(cause) }));
     }
   }
@@ -257,8 +260,8 @@ export default function TrainWorkspace() {
             <section className="train-step-card" aria-labelledby="step3">
               <h2 id="step3"><span>3</span> Train</h2>
               {trained && <div className="train-mode" role="radiogroup" aria-label="What to do with the photos it already learned">
-                <label className={mode === "add" ? "active" : ""}><input type="radio" name="train-mode" checked={mode === "add"} onChange={() => setMode("add")} />Add to existing</label>
-                <label className={mode === "replace" ? "active" : ""}><input type="radio" name="train-mode" checked={mode === "replace"} onChange={() => setMode("replace")} />Replace all photos</label>
+                <label className={mode === "add" ? "active" : ""}><input type="radio" name="train-mode" checked={mode === "add"} onChange={() => setMode("add")} />{mode === "add" && <motion.span layoutId="mode-pill" className="seg-pill" />}<span>Add to existing</span></label>
+                <label className={mode === "replace" ? "active" : ""}><input type="radio" name="train-mode" checked={mode === "replace"} onChange={() => setMode("replace")} />{mode === "replace" && <motion.span layoutId="mode-pill" className="seg-pill" />}<span>Replace all photos</span></label>
               </div>}
               {trained && mode === "replace" && <p className="train-warning"><AlertTriangle size={13} /> Replacing drops the {product?.goodImageCount ?? 0} photos it learned from now.</p>}
               <details className="train-settings"><summary><Settings2 size={13} /> Model: {backbone === "auto" ? "auto" : backbone} · rotation {rotates ? "on" : "off"}</summary>

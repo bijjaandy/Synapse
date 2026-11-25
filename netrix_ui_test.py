@@ -113,6 +113,7 @@ def main():
             page.screenshot(path=str(SHOTS / "train_running.png"), full_page=True)
             page.wait_for_selector(".train-live .go-inspect", timeout=180_000)
             print("trained:", page.inner_text(".train-live h3"), "|", page.inner_text(".train-time").replace("\n", " "))
+            print("toasts so far:", page.evaluate("window.__netrixToasts || []"), "| nav pill under:", page.evaluate("document.querySelector('.nav-pill')?.parentElement?.textContent"))
             page.click(".train-live .go-inspect"); page.wait_for_url("**/inspect", timeout=15000); page.wait_for_selector("#object-select")
             print("inspect page: train section", page.locator("#train").count(), "| nav:", page.locator(".netrix-topbar nav a").all_inner_texts())
             page.select_option("#object-select", PART)
@@ -193,6 +194,7 @@ def main():
                 mine.first.locator(".verify-defect").click()
                 page.wait_for_timeout(1500)
                 print("after confirm:", page.locator(".verify-item", has_text=PRODUCT).count(), "of ours left")
+                print("   toast:", page.evaluate("(window.__netrixToasts || []).slice(-1)"))
             import urllib.request, json as _json
             rid = _json.load(urllib.request.urlopen(f"http://localhost:8000/log?object={PART}&limit=1"))[0]["id"]
             page.goto(f"{URL}/evaluation?ask={rid}", wait_until="domcontentloaded")  # it starts asking the AI at once
@@ -244,6 +246,7 @@ def main():
                 import urllib.request, json as _json
                 saved = _json.load(urllib.request.urlopen(f"http://localhost:8000/objects/{PART}/status"))["strictness"]
                 print("-> label:", card.locator(".strictness label").inner_text().replace("\n", " "), "| backend:", saved)
+                print("   toast:", page.evaluate("(window.__netrixToasts || []).slice(-1)"))
             # glass detail panel: click opens, Esc closes and focus returns to the card; hover opens; click outside closes
             card.locator("h4").click()
             page.wait_for_selector(".glass-panel dl", timeout=15000); page.wait_for_timeout(600)

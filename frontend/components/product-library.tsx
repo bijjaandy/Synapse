@@ -1,4 +1,5 @@
 "use client";
+import { toast } from "@/lib/toast";
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -30,6 +31,7 @@ export function AddProductCard({ onCreated, startOpen = false }: { onCreated?: (
     setBusy(true); setError(null);
     try {
       const p = await createProduct(name.trim(), sku.trim(), description.trim());
+      toast(`Product added: ${p.display_name}`);
       try { window.localStorage.setItem("netrix.part", p.id); } catch { /* private mode */ }
       onCreated?.(p.id);
       router.push("/train");
@@ -59,7 +61,7 @@ function EditProduct({ product, onSaved, onCancel }: { product: ObjectTrainingSt
   const [busy, setBusy] = useState(false);
   return <form className="edit-product" onSubmit={async (e) => {
     e.preventDefault(); setBusy(true); setError(null);
-    try { await updateProduct(product.objectId, { display_name: name.trim(), sku: sku.trim(), description: description.trim() }); onSaved(); }
+    try { await updateProduct(product.objectId, { display_name: name.trim(), sku: sku.trim(), description: description.trim() }); toast("Details saved"); onSaved(); }
     catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); setBusy(false); }
   }}>
     <label>Name<input required maxLength={80} value={name} onChange={(e) => setName(e.target.value)} /></label>
@@ -105,6 +107,7 @@ export function ProductLibrary({ statuses, loading, error, active, onChanged }: 
     try {
       const r = await importProduct(file, overwrite);
       setNote(`Imported ${r.display_name} (${r.photos} photos).`);
+      toast(`Imported ${r.display_name}`);
       onChanged?.();
     } catch (cause) {
       const msg = cause instanceof Error ? cause.message : String(cause);
@@ -134,7 +137,7 @@ export function ProductLibrary({ statuses, loading, error, active, onChanged }: 
           {canManage && editing === p.objectId && <EditProduct product={p} onSaved={() => { setEditing(null); onChanged?.(); }} onCancel={() => setEditing(null)} />}
           {canManage && editing !== p.objectId && <div className="product-actions">
             <button type="button" className="remove-part-btn edit-product-btn" onClick={() => setEditing(p.objectId)}><Pencil size={12} /> Edit details</button>
-            {p.status === "Trained" && <button type="button" className="remove-part-btn export-product-btn" onClick={() => exportProduct(p.objectId).catch((e) => setNote(e instanceof Error ? e.message : String(e)))}><Download size={12} /> Export</button>}
+            {p.status === "Trained" && <button type="button" className="remove-part-btn export-product-btn" onClick={() => exportProduct(p.objectId).then(() => toast(`Exported ${p.objectName}`)).catch((e) => setNote(e instanceof Error ? e.message : String(e)))}><Download size={12} /> Export</button>}
             {p.status !== "Training" && <RemovePart id={p.objectId} name={p.objectName} onRemoved={onChanged} />}
           </div>}
         </article>)}
