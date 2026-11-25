@@ -3,11 +3,11 @@
 import { useEffect, useRef, useState } from "react";
 import useSWR from "swr";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { Bot, Check, CircleAlert, LoaderCircle, Send, ShieldCheck, X } from "lucide-react";
+import { Bot, Check, CircleAlert, LoaderCircle, Send, ShieldCheck, Square, X } from "lucide-react";
 import { askAssistant, assistantStatus, loadSession, getSummary, getVerifyQueue, heatmapUrl, photoUrl, verifyInspection,
          type ChatMessage, type QueueItem, type Summary } from "@/lib/api";
 import { objectCategories } from "@/config/content";
-import { useLang } from "@/lib/voice";
+import { useLang, useVoice } from "@/lib/voice";
 
 const partName = (id: string) => objectCategories.find((c) => c.id === id)?.name ?? id;
 
@@ -68,6 +68,7 @@ export const askPrompt = (id: number) => `Explain inspection #${id}: why did it 
  *  Evaluation, but /assistant doesn't need a role, so they get the answer right here. */
 export function AskAiButton({ inspectionId }: { inspectionId: number }) {
   const [lang] = useLang();
+  const voice = useVoice();
   const [role, setRole] = useState<string | null>(null);
   const [answer, setAnswer] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -77,16 +78,18 @@ export function AskAiButton({ inspectionId }: { inspectionId: number }) {
   return <div className="ask-ai-inline">
     <button type="button" className="layers-toggle ask-ai" disabled={busy} onClick={async () => {
       setBusy(true);
-      try { setAnswer((await askAssistant(askPrompt(inspectionId), [], lang)).answer); }
+      try { const a = (await askAssistant(askPrompt(inspectionId), [], lang)).answer; setAnswer(a); voice.sayAnswer(a); }
       catch (cause) { setAnswer(cause instanceof Error ? cause.message : String(cause)); }
       finally { setBusy(false); }
     }}>{busy ? <LoaderCircle size={13} className="spin" /> : <Bot size={13} />} Ask AI why</button>
     {answer && <p className="ask-ai-answer">{answer}</p>}
+    {voice.speaking && <button type="button" className="layers-toggle stop-speaking" onClick={voice.stop}><Square size={11} /> Stop</button>}
   </div>;
 }
 
 export function AssistantChat() {
   const [lang] = useLang();
+  const voice = useVoice();
   const { data: status } = useSWR("assistant-status", assistantStatus, { refreshInterval: 15000 });
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -99,12 +102,12 @@ export function AssistantChat() {
     if (asked.current || !id || !/^\d+$/.test(id)) return;
     asked.current = true;
     setInput(askPrompt(Number(id)));
-    send(askPrompt(Number(id)));
+    send(askPrompt(Number(id)), true);  // this answer is read aloud; typed chat is not
     window.history.replaceState(null, "", window.location.pathname);  // a reload doesn't ask again
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function send(text: string) {
+  async function send(text: string, readAloud = false) {
     const message = text.trim();
     if (!message || busy) return;
     const history = messages;
@@ -114,6 +117,7 @@ export function AssistantChat() {
     try {
       const r = await askAssistant(message, history, lang);
       setMessages((m) => [...m, { role: "assistant", content: r.answer, source: r.source, model: r.model, ms: r.ms }]);
+      if (readAloud) voice.sayAnswer(r.answer);
     } catch (cause) {
       setMessages((m) => [...m, { role: "assistant", content: cause instanceof Error ? cause.message : String(cause), source: "error" }]);
     } finally { setBusy(false); }
@@ -124,6 +128,7 @@ export function AssistantChat() {
   return <section className="netrix-card chat-card" aria-labelledby="chat-title">
     <div className="netrix-card-head"><div><h2 id="chat-title"><Bot size={18} /> Ask Netrix</h2><p>Questions about today’s inspections, a check by number (e.g. “why was #12 flagged?”), or how the system works. Answers come only from this laptop’s data.</p></div></div>
     <p className={`chat-status ${status?.ollama && status.model_installed ? "ok" : "warn"}`}>{state}</p>
+    {voice.speaking && <button type="button" className="layers-toggle stop-speaking" onClick={voice.stop}><Square size={11} /> Stop reading</button>}
     <div className="chat-list" ref={list} aria-live="polite">
       {!messages.length && <div className="chat-suggestions">{SUGGESTIONS.map((s) => <button key={s} type="button" onClick={() => send(s)}>{s}</button>)}</div>}
       {messages.map((m, i) => <div key={i} className={`chat-msg ${m.role}`}><p>{m.content}</p>{m.role === "assistant" && m.source && m.source !== "error" && <small>{m.source === "ollama" ? `${m.model} · ${(m.ms ?? 0) / 1000}s` : "offline answer"}</small>}</div>)}

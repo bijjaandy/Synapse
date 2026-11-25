@@ -1,5 +1,5 @@
 // Spoken verdicts with the browser's built-in (offline, Windows) voices, in English or Kannada. No network.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { InspectionResult } from "@/lib/api";
 
 const KEY = "netrix.voice";
@@ -102,13 +102,20 @@ export function useVoice() {
     if (!next) { stopSpeaking(); setSpeaking(false); }
     return next;
   }), []);
-  const say = useCallback((text: string) => {
-    if (!on || !supported) return;
-    const result = speak(text, lang, () => setSpeaking(false));
+  // read at call time, so a callback captured on the first render (e.g. the ?ask= auto question) still sees the settings
+  const current = useRef({ on, lang });
+  current.current = { on, lang };
+  const say = useCallback((text: string, forceLang?: Lang) => {
+    let saved: string | null = null;
+    try { saved = window.localStorage.getItem(KEY); } catch { /* private mode */ }
+    if (saved === "off" || !current.current.on || !voiceSupported()) return;
+    const result = speak(text, forceLang ?? current.current.lang, () => setSpeaking(false));
     setSpeaking(result === "spoken");
     if (result === "no-voice" && !kannadaHintShown) { kannadaHintShown = true; setKannadaHint(true); }
-  }, [on, supported, lang]);
-  const announce = useCallback((r: VerdictInfo) => say(verdictPhrase(r, lang)), [say, lang]);
+  }, []);
+  const announce = useCallback((r: VerdictInfo) => say(verdictPhrase(r, current.current.lang)), [say]);
+  /** An AI answer: markdown stripped, read in the language it is written in (Kannada script needs a Kannada voice). */
+  const sayAnswer = useCallback((text: string) => say(speakable(text), /[\u0C80-\u0CFF]/.test(text) ? "kn" : "en"), [say]);
   const stop = useCallback(() => { stopSpeaking(); setSpeaking(false); }, []);
-  return { on, supported, toggle, announce, say, stop, speaking, lang, kannadaHint, dismissKannadaHint: () => setKannadaHint(false) };
+  return { on, supported, toggle, announce, say, sayAnswer, stop, speaking, lang, kannadaHint, dismissKannadaHint: () => setKannadaHint(false) };
 }

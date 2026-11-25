@@ -109,6 +109,7 @@ def main():
                 ask.first.click()
                 page.wait_for_selector(".ask-ai-answer", timeout=120_000)
                 print("-> inline answer:", page.inner_text(".ask-ai-answer").replace("\n", " ")[:140])
+                print("   read aloud:", (page.evaluate("window.__spoken")[-1:] or ["-"])[0][:70], "| stop button seen:", page.locator(".stop-speaking").count() > 0 or "(already finished)")
             vt = page.locator(".voice-toggle")
             print("voice toggle:", vt.count(), vt.get_attribute("aria-pressed") if vt.count() else "-", end=" ")
             if vt.count():
@@ -177,6 +178,7 @@ def main():
             page.goto(f"{URL}/evaluation?ask={rid}", wait_until="networkidle")
             page.wait_for_function("document.querySelectorAll('.chat-msg.assistant').length >= 1 && !document.querySelector('.chat-msg .spin')", timeout=150_000)
             print(f"ask={rid}: question:", page.locator(".chat-msg.user").first.inner_text()[:60], "| reply:", page.locator(".chat-msg.assistant").last.inner_text().replace("\n", " ")[:160])
+            print("ask answer read aloud:", (page.evaluate("window.__spoken")[-1:] or ["-"])[0][:70])
             print("url after ask:", page.url)
             page.wait_for_selector(".verify-card", timeout=10000)
             # judge test mode: a folder of three test photos through the test part, not logged
@@ -198,12 +200,14 @@ def main():
             lines = Path(dl.value.path()).read_text(encoding="utf-8").strip().splitlines()
             print("judge csv:", lines[0], "|", len(lines) - 1, "rows")
             page.locator("#judge-panel").screenshot(path=str(SHOTS / "judge.png"))
+            spoken_before_chat = len(page.evaluate("window.__spoken"))
             page.fill("#chat-q", "How many parts were inspected?")
             before = page.locator(".chat-msg.assistant").count()
             page.click(".chat-input button")
             # done = no "Thinking" bubble left and one more assistant message than before (works for fast and slow answers)
             page.wait_for_function(f"!document.querySelector('.chat-msg .spin') && document.querySelectorAll('.chat-msg.assistant').length > {before}", timeout=150_000)
             print("assistant:", page.locator(".chat-msg.assistant").last.inner_text().replace("\n", " ")[:200])
+            print("typed chat read aloud:", len(page.evaluate("window.__spoken")) - spoken_before_chat, "(expected 0)")
             page.screenshot(path=str(SHOTS / "evaluation_chat.png"))
 
         def objects():
@@ -229,7 +233,7 @@ def main():
         def summary():
             login_as("supervisor")
             page.goto(f"{URL}/summary", wait_until="networkidle")
-            page.wait_for_selector(".summary-kpis", timeout=10000)
+            page.wait_for_selector(".summary-kpis", timeout=30000)  # slower while another part trains
             print("kpis:", " | ".join(page.locator(".kpi").all_inner_texts()).replace("\n", " "))
             page.screenshot(path=str(SHOTS / "summary.png"), full_page=True)
 
