@@ -296,9 +296,13 @@ class Inspector:
                 "grid": np.round(small, 3).ravel().tolist(), "grid_size": grid}
 
     def add_good(self, path):
-        """Operator says 'this was actually good' -> learn it instantly, no retraining."""
+        """Operator says 'this was actually good' -> learn it instantly, no retraining.
+        Adds every patch that scored at or above the unsure line (the flagged spots, always at least the worst one)
+        plus a 10% sample of the rest, so the same photo is no longer flagged."""
         f = self.fx([load_image(path)])[0]
-        self.bank = torch.cat([self.bank, greedy_coreset(f, 0.1)])
+        d = torch.cdist(f, self.bank).min(1).values
+        flagged = f[d >= min(self.low, float(d.max()))]
+        self.bank = torch.cat([self.bank, greedy_coreset(f, 0.1), flagged])
 
     def save(self, path):
         torch.save({"bank": self.bank, "low": self.low, "high": self.high, "thr": self.thr,

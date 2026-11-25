@@ -128,7 +128,7 @@ def run_training(name, folder, backbone, rotations):
             m.save(MODELS / f"{name}.pt")
             with state_lock:
                 models[name] = m
-            job.update(state="ready", train_s=round(time.time() - job["started"], 1))
+            job.update(state="ready", train_s=round(time.time() - job["started"], 1), trained_at=time.time())
         except Exception as e:  # report to the UI instead of dying silently in the thread
             job.update(state="failed", error=str(e))
 
@@ -184,13 +184,17 @@ def status(name: str):
     if path.exists():
         with state_lock:
             m = models.get(name)
-        return {"name": name, "state": "ready", "backbone": m.fx.name if m else saved_backbone(path)}
+        good = DATA / name / "good"
+        return {"name": name, "state": "ready", "backbone": m.fx.name if m else saved_backbone(path),
+                "n_images": len(list(good.glob("*.png"))) if good.exists() else None,
+                "trained_at": path.stat().st_mtime}
     raise HTTPException(404, f"unknown object '{name}'")
 
 
 @app.post("/objects/{name}/predict")
-def predict(name: str, file: UploadFile = File(...), heatmap: bool = True):
-    """Returns good / defective / unsure, the score, time taken and a heatmap PNG (base64)."""
+def predict(name: str, file: UploadFile = File(...), heatmap: bool = True, log: bool = True):
+    """Returns good / defective / unsure / retake, the score, time taken and a heatmap PNG (base64).
+    log=false (used by evaluation runs) keeps the photo out of the inspection log and shift report."""
     m = get_model(check_name(name))
     data = read_upload(file)
     decode_image(data, file.filename or "upload")  # reject bad files with a clear 400
@@ -203,7 +207,7 @@ def predict(name: str, file: UploadFile = File(...), heatmap: bool = True):
     overlay(io.BytesIO(data), r["map"], buf, vmax=m.high * 1.5)
     png = buf.getvalue()
     out["inspection_id"] = inspection_log.add(name, r["label"], r["score"], m.thr, r["ms"], m.fx.name,
-                                              r["reasons"], png)
+                                              r["reasons"], png) if log else None
     if heatmap:
         out["heatmap_png_base64"] = base64.b64encode(png).decode()
     return out

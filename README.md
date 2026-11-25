@@ -11,7 +11,24 @@ Learns from photos of good parts only. Never sees a real defect, even to set the
     python test_inspector.py                 # ML self-check, should print SELF-TEST PASSED
     pytest -q                                # API tests + feature tests (rotation, retake, pins, auto model)
 
-## Web UI
+## Main UI: the Sightline frontend (Next.js, in `frontend/`)
+The designed UI talks to the same FastAPI backend. Two terminals:
+
+    uvicorn app:app --port 8000                       # backend (model), from the project folder
+    cd frontend
+    npm install                                       # once, while online
+    npm run build && npx next start -p 3000           # or: npm run dev
+    # open http://localhost:3000  (use localhost: browsers only allow the webcam there)
+
+The frontend calls `http://localhost:8000`; set `NEXT_PUBLIC_API_URL` before building to change it.
+Everything runs offline after `npm install`. The simpler page at http://localhost:8000/ still works as a backup.
+
+What is live in it: training with auto model choice, rotation and the real log; webcam capture with the
+"enough photos?" meter; inspection with the 3D view (three.js + anime.js), 2D heatmap and layers (score map,
+mask); GOOD / DEFECTIVE / UNSURE / RETAKE with reasons and pins; "This was actually good"; evaluation on
+labelled folders (not added to the shift log); object library; history, CSV and shift report.
+
+## Web UI (backup, served by the backend)
     uvicorn app:app --port 8000              # then open http://localhost:8000/   (API docs at /docs)
 
 One page (`static/index.html` + `static/stage3d.js`, plain HTML + JS, no build step). Three.js, anime.js, Motion

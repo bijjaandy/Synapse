@@ -96,7 +96,9 @@ def test_wide_resnet50_backbone(client):
 
     server.models.clear()
     server.jobs.clear()  # status and predict must now come from the saved model file alone
-    assert client.get("/objects/wrn/status").json() == {"name": "wrn", "state": "ready", "backbone": "wide_resnet50"}
+    st = client.get("/objects/wrn/status").json()
+    assert {k: st[k] for k in ("name", "state", "backbone")} == {"name": "wrn", "state": "ready", "backbone": "wide_resnet50"}
+    assert st["n_images"] == 20 and st["trained_at"] > 0
     bad = client.post("/objects/wrn/predict", files={"file": ("b.png", png(part(rng, scratch=True)[0]))})
     assert bad.status_code == 200 and bad.json()["ms"] < 1000
     assert server.models["wrn"].fx is server.extractors["wide_resnet50"]  # reloaded onto the shared extractor
@@ -163,3 +165,11 @@ def test_meter_session(client):
     assert st["ready"], st  # 14 near-identical good parts: new photos stop adding anything
     assert client.post("/meter/nope", files={"file": ("a.png", png(part(rng)[0]))}).status_code == 404
     assert client.delete(f"/meter/{sid}").json() == {"ended": True}
+
+
+def test_predict_without_logging(client):
+    train_toy(client, "nolog", backbone="resnet18")
+    img = png(part(np.random.default_rng(9))[0])
+    r = client.post("/objects/nolog/predict", params={"log": "false"}, files={"file": ("a.png", img)}).json()
+    assert r["inspection_id"] is None
+    assert client.get("/report", params={"object": "nolog"}).json()["total"] == 0

@@ -102,3 +102,12 @@ def test_old_model_files_still_load(tmp_path, fx):
     loaded = Inspector.load(tmp_path / "old.pt", fx)
     assert loaded.rotations == 1 and loaded.quality is None
     assert loaded.predict(save_all(tmp_path, [part(rng)[0]], "g")[0])["label"] in ("good", "unsure")
+
+
+def test_feedback_clears_the_flag(tmp_path, fx):
+    rng = np.random.default_rng(4)
+    m = Inspector(fx).fit(save_all(tmp_path, [part(rng)[0] for _ in range(30)], "t"), log=lambda *_: None)
+    flagged = save_all(tmp_path, [part(rng, scratch=True)[0]], "s")[0]
+    assert m.predict(flagged)["label"] == "defective"
+    m.add_good(flagged)                                   # operator: "this was actually good"
+    assert m.predict(flagged)["label"] == "good"          # one click is enough for the same photo
