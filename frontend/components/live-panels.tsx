@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { animate, motion, useReducedMotion } from "framer-motion";
 import { Camera, CameraOff, Check, LoaderCircle, RotateCcw, ScanLine, Trash2 } from "lucide-react";
+import { aboveLineUrl, blendUrl, distanceMapUrl, heatGradientCss, legendPos, loadImg } from "@/lib/heatmaps";
 import { meterAdd, meterEnd, meterStart, type InspectionResult, type MeterStatus } from "@/lib/api";
 
 type StageApi = { show: (r: unknown, photo: Blob, onDone?: () => void) => Promise<void>; resetView: () => void; dispose: () => void };
@@ -46,7 +47,8 @@ export function InspectionStage3D({ result, photo, onSequenceDone }: { result: I
     <div ref={labels} className="stage3d-labels" />
     {failed && <p className="stage3d-error" role="alert">{failed}</p>}
     <button type="button" className="stage3d-reset" onClick={() => stage.current?.resetView()}><RotateCcw size={12} /> Reset view</button>
-    <span className="stage3d-hint">Drag to rotate · scroll to zoom</span>
+    <span className="stage3d-hint">Drag to rotate · scroll to zoom · height = how different</span>
+    <div className="stage3d-legend"><HeatLegend compact /></div>
   </div>;
 }
 
@@ -169,5 +171,84 @@ export function FeedbackButton({ onConfirm, done }: { onConfirm: () => Promise<v
       {busy ? <LoaderCircle size={13} /> : <Check size={13} />} This was actually good
     </button>
     {error && <span className="cam-error" role="alert">{error}</span>}
+  </div>;
+}
+
+/** Colour key shared by the 3D view, the 2D heatmap and the layer map. */
+export function HeatLegend({ compact = false }: { compact?: boolean }) {
+  return <div className={`heat-legend ${compact ? "compact" : ""}`} aria-label="Colour key: from like the good parts to very different">
+    <div className="heat-legend-top"><span style={{ left: `${legendPos(1)}%` }}>Line (1×)</span><span style={{ left: `${legendPos(2)}%` }}>2×</span></div>
+    <div className="heat-legend-bar" style={{ background: heatGradientCss() }}>
+      <span className="heat-legend-line" style={{ left: `${legendPos(1)}%` }} />
+      <span className="heat-legend-line minor" style={{ left: `${legendPos(2)}%` }} />
+    </div>
+    <div className="heat-legend-labels"><span>Like good parts</span><span>Very different</span></div>
+  </div>;
+}
+
+type Layer = { key: string; title: string; text: string; src: string | null; pins?: boolean };
+
+/** The layer map: the steps from photo to decision as an exploded 3D stack. Pick a layer to read what it shows. */
+export function LayerMap({ result, photoUrl }: { result: InspectionResult; photoUrl: string | null }) {
+  const reducedMotion = useReducedMotion() ?? false;
+  const [imgs, setImgs] = useState<{ blend: string; above: string; dist: string } | null>(null);
+  const [active, setActive] = useState(4);
+  const [stacked, setStacked] = useState(true);
+
+  useEffect(() => {
+    let live = true;
+    if (!photoUrl || !result.grid?.length) { setImgs(null); return; }
+    loadImg(photoUrl).then((photo) => {
+      if (!live) return;
+      setImgs({ dist: distanceMapUrl(result.grid, result.gridSize), blend: blendUrl(photo, result.grid, result.gridSize),
+                above: aboveLineUrl(photo, result.grid, result.gridSize) });
+    }).catch(() => setImgs(null));
+    return () => { live = false; };
+  }, [result, photoUrl]);
+
+  const over = result.grid ? result.grid.filter((v) => v >= 1).length : 0;
+  const pct = result.grid?.length ? (100 * over / result.grid.length) : 0;
+  const max = result.grid?.length ? Math.max(...result.grid) : 0;
+  const layers: Layer[] = [
+    { key: "photo", title: "1 · Photo", text: "What the camera saw, resized for the model. Nothing is judged yet.", src: photoUrl },
+    { key: "dist", title: "2 · Patch distances", text: `The photo is cut into ${result.gridSize}×${result.gridSize} cells. Each cell's colour is how far it is from the closest good patch in memory. Highest here: ${max.toFixed(2)}× the line.`, src: imgs?.dist ?? null },
+    { key: "heat", title: "3 · Heatmap", text: "The distances laid over the photo. Clear means it looks like the good parts; amber is the line; red is far beyond it.", src: imgs?.blend ?? null },
+    { key: "above", title: "4 · Above the line", text: over ? `${over} cells (${pct.toFixed(1)}% of the photo) are past the line set from good photos only. They are outlined.` : "No cell is past the line set from good photos only.", src: imgs?.above ?? null },
+    { key: "decide", title: "5 · Decision", text: `${result.verdict}: the worst cell decides. Score ${result.score.toFixed(2)} against a line of ${result.threshold.toFixed(2)}${result.regions.length ? `; ${result.regions.length} spot${result.regions.length > 1 ? "s" : ""} pinned` : ""}.`, src: imgs?.blend ?? photoUrl, pins: true },
+  ];
+  const n = layers.length;
+
+  return <div className="layer-map">
+    <div className="layer-map-head">
+      <span>Layer map · from photo to decision</span>
+      <button type="button" className="layers-toggle" onClick={() => setStacked((s) => !s)} aria-pressed={stacked}>{stacked ? "Show side by side" : "Show as 3D stack"}</button>
+    </div>
+    <div className={`layer-map-body ${stacked ? "stacked" : "flat"}`}>
+      <div className="layer-stack" role="listbox" aria-label="Layers">
+        {layers.map((l, i) => {
+          const isActive = i === active;
+          const y = stacked ? -(i - (n - 1) / 2) * 52 : 0;
+          return <motion.button key={l.key} type="button" role="option" aria-selected={isActive}
+            className={`layer-sheet ${isActive ? "active" : ""} ${l.key === "decide" ? `verdict-${result.verdict.toLowerCase()}` : ""}`}
+            onClick={() => setActive(i)} onMouseEnter={() => stacked && setActive(i)}
+            initial={reducedMotion ? false : { opacity: 0, y: y + 40 }}
+            animate={{ opacity: 1, y: y - (isActive && stacked ? 14 : 0) }}
+            transition={{ duration: reducedMotion ? 0 : 0.45, delay: reducedMotion ? 0 : i * 0.07, ease: [0.22, 1, 0.36, 1] }}
+            style={stacked ? { zIndex: i + 1, rotateX: 58, rotateZ: -40 } : { zIndex: i + 1 }}>
+            <span className="layer-sheet-img">
+              {l.src ? <img src={l.src} alt={l.title} /> : <span className="layer-sheet-wait" />}
+              {l.pins && result.regions.map((r, k) => <span key={k} className="layer-pin" style={{ left: `${r.x * 100}%`, top: `${r.y * 100}%` }}>{k + 1}</span>)}
+            </span>
+            <span className="layer-sheet-tag">{l.title}</span>
+          </motion.button>;
+        })}
+      </div>
+      <div className="layer-detail" aria-live="polite">
+        <strong>{layers[active].title}</strong>
+        <p>{layers[active].text}</p>
+        {(active === 1 || active === 2) && <HeatLegend compact />}
+        <div className="layer-chips">{layers.map((l, i) => <button key={l.key} type="button" className={i === active ? "on" : ""} onClick={() => setActive(i)}>{l.title.replace(" · ", " ")}</button>)}</div>
+      </div>
+    </div>
   </div>;
 }

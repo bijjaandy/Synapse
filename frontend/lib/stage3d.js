@@ -3,10 +3,11 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { animate, createTimeline, stagger } from "animejs";
+import { heatCanvas, sampleGrid } from "./heatmaps";
 
 const SEG = 127;                       // plane is (SEG+1) x (SEG+1) vertices
-const BASE_RELIEF = 0.05;              // photo brightness gives the surface a little texture
-const DEFECT_LIFT = 0.34;              // how far the worst areas rise
+const BASE_RELIEF = 0.03;              // photo brightness gives the surface a little texture
+const DEFECT_LIFT = 0.24;              // how far the worst areas rise
 const SIGNAL = 0xe0b341, REJECT = 0xc2571a;   // template palette: amber scan, --defect
 const CAMERA_HOME = new THREE.Vector3(0, -2.55, 2.25);
 const reduceMotion = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -27,15 +28,8 @@ function loadImage(blob) {
   });
 }
 
-// score grid is grid_size x grid_size, row 0 at the top, values in threshold units (1.0 = the line)
-function sampleGrid(grid, n, u, v) {
-  const x = Math.min(n - 1, Math.max(0, u * (n - 1))), y = Math.min(n - 1, Math.max(0, v * (n - 1)));
-  const x0 = Math.floor(x), y0 = Math.floor(y), x1 = Math.min(n - 1, x0 + 1), y1 = Math.min(n - 1, y0 + 1);
-  const fx = x - x0, fy = y - y0, g = (r, c) => grid[r * n + c];
-  return (g(y0, x0) * (1 - fx) + g(y0, x1) * fx) * (1 - fy) + (g(y1, x0) * (1 - fx) + g(y1, x1) * fx) * fy;
-}
-
-const lift = s => Math.min(1, Math.max(0, (s - 0.75) / 1.25));  // below 0.75x the threshold stays flat
+// below 0.9x the line stays flat; height keeps growing up to 3.5x the line, so peaks keep their shape instead of plateauing
+const lift = s => Math.pow(Math.min(1, Math.max(0, (s - 0.9) / 2.6)), 0.75);
 
 export class InspectionStage {
   constructor(host, labelLayer) {
@@ -156,19 +150,14 @@ export class InspectionStage {
       if (result.label !== "retake") defect[i] = lift(sampleGrid(result.grid, result.grid_size, u, v)) * DEFECT_LIFT;
     }
 
-    // glow texture: red to yellow where the score is high
-    const g = result.grid_size, hc = document.createElement("canvas");
-    hc.width = hc.height = g;
-    const hctx = hc.getContext("2d"), heat = hctx.createImageData(g, g);
-    for (let i = 0; i < g * g; i++) {
-      const t = result.label === "retake" ? 0 : lift(result.grid[i]);
-      heat.data[i * 4] = 255 * Math.min(1, t * 1.6);
-      heat.data[i * 4 + 1] = 200 * Math.max(0, t - 0.55);
-      heat.data[i * 4 + 2] = 0;
-      heat.data[i * 4 + 3] = 255;
-    }
-    hctx.putImageData(heat, 0, 0);
+    // glow texture: the same colour scale as the 2D heatmap, over black (black = no glow), with the line as a contour
+    const hc = document.createElement("canvas");
+    hc.width = hc.height = 256;
+    const hctx = hc.getContext("2d");
+    hctx.fillStyle = "#000"; hctx.fillRect(0, 0, 256, 256);
+    if (result.label !== "retake") hctx.drawImage(heatCanvas(result.grid, result.grid_size, { size: 256 }), 0, 0);
     const heatTex = new THREE.CanvasTexture(hc);
+    heatTex.colorSpace = THREE.SRGBColorSpace;
     const photoTex = new THREE.Texture(img);
     photoTex.colorSpace = THREE.SRGBColorSpace;
     photoTex.needsUpdate = true;
@@ -211,7 +200,7 @@ export class InspectionStage {
         this.scene.add(group, ring);
         const label = document.createElement("div");
         label.className = "pin-label";
-        label.textContent = String(k + 1);
+        label.innerHTML = `<b>${k + 1}</b>${r.peak ? `<small>${r.peak.toFixed(1)}× line</small>` : ""}`;
         this.labelLayer.append(label);
         this.pins.push({ group, ring, label, region: r });
         group.visible = ring.visible = false;
@@ -219,7 +208,7 @@ export class InspectionStage {
     }
 
     const finish = () => {
-      state.rise = 1; state.glow = flagged ? 1.4 : 0.5; applyHeights();
+      state.rise = 1; state.glow = flagged ? 1.1 : 0.6; applyHeights();
       mat.emissiveIntensity = state.glow;
       this.scan.visible = false;
       this.pins.forEach(p => { p.group.visible = p.ring.visible = true; p.group.position.z = p.group.userData.finalZ; });
@@ -245,7 +234,7 @@ export class InspectionStage {
                     onUpdate: () => this.scan.position.setY(state.scan),
                     onComplete: () => { this.scan.visible = false; } }, 150)
       .add(state, { rise: 1, duration: 750, ease: "outCubic", onUpdate: applyHeights }, 800)
-      .add(state, { glow: flagged ? 1.4 : 0.5, duration: 500, ease: "outQuad",
+      .add(state, { glow: flagged ? 1.1 : 0.6, duration: 500, ease: "outQuad",
                     onUpdate: () => { mat.emissiveIntensity = state.glow; } }, 1150);
     this.anims.push(tl);
 

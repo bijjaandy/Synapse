@@ -90,6 +90,10 @@ def main():
                 page.wait_for_selector(".verdict:not(.waiting)", timeout=30000)
                 page.wait_for_timeout(2500)
                 print(f"inspect {name}:", page.inner_text(".verdict strong"))
+            page.click("text=2D heatmap"); page.wait_for_timeout(500); print("2D legend:", page.locator(".heat-legend").count())
+            page.click("text=Layer map"); page.wait_for_timeout(1500); print("layer sheets:", page.locator(".layer-sheet").count(), "images:", page.locator(".layer-sheet img").count())
+            page.click("text=Side by side") if page.locator("text=Side by side").count() else None
+            page.click("text=3D view")
             page.screenshot(path=str(SHOTS / "dashboard.png"))
 
         def evaluation():
