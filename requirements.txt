@@ -1,0 +1,12 @@
+torch
+torchvision
+numpy
+scipy
+scikit-learn
+pillow
+fastapi
+uvicorn
+python-multipart
+# tests only
+httpx
+pytest

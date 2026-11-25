@@ -1,0 +1,402 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Good-Parts Inspector</title>
+<style>
+  :root {
+    --bg: #f3f4f6; --card: #ffffff; --ink: #111827; --muted: #4b5563; --line: #d1d5db;
+    --accent: #1d4ed8; --accent-ink: #ffffff;
+    --good: #15803d; --bad: #b91c1c; --unsure: #b45309;
+    --err-bg: #fef2f2; --err-ink: #991b1b;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 17px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { background: var(--ink); color: #fff; padding: 12px 20px; display: flex; flex-wrap: wrap;
+           align-items: center; gap: 12px 24px; }
+  header h1 { font-size: 1.3rem; margin: 0; }
+  header .sub { color: #d1d5db; font-size: .95rem; }
+  main { max-width: 1400px; margin: 0 auto; padding: 16px; display: grid; gap: 16px;
+         grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); }
+  @media (max-width: 900px) { main { grid-template-columns: minmax(0, 1fr); } }
+  .col { display: grid; gap: 16px; align-content: start; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+  h2 { font-size: 1.15rem; margin: 0 0 12px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+  label { font-weight: 600; }
+  input[type=text], select { font: inherit; padding: 7px 10px; border: 1px solid var(--line); border-radius: 6px;
+                             min-width: 0; background: #fff; color: var(--ink); }
+  input[type=file] { font: inherit; max-width: 100%; }
+  button { font: inherit; font-weight: 600; padding: 8px 14px; border-radius: 6px; cursor: pointer;
+           border: 1px solid var(--accent); background: var(--accent); color: var(--accent-ink); }
+  button.secondary { background: #fff; color: var(--accent); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  .muted { color: var(--muted); }
+  .current { font-size: 1.05rem; }
+  .current b { font-family: ui-monospace, Consolas, monospace; }
+  .error { background: var(--err-bg); color: var(--err-ink); border: 1px solid #fecaca; border-radius: 6px;
+           padding: 8px 12px; margin: 8px 0; }
+  .error:empty { display: none; }
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-weight: 700; font-size: .9rem;
+           background: #e5e7eb; color: var(--ink); text-transform: uppercase; letter-spacing: .03em; }
+  .badge.ready { background: var(--good); color: #fff; }
+  .badge.failed { background: var(--bad); color: #fff; }
+  .badge.training, .badge.queued { background: var(--unsure); color: #fff; }
+  pre.log { background: #111827; color: #e5e7eb; padding: 10px; border-radius: 6px; font-size: .85rem;
+            white-space: pre-wrap; max-height: 180px; overflow: auto; margin: 8px 0 0; }
+  pre.log:empty { display: none; }
+  .drop { border: 2px dashed var(--line); border-radius: 10px; padding: 22px; text-align: center; cursor: pointer; }
+  .drop.over { border-color: var(--accent); background: #eff6ff; }
+  .result { border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin-top: 14px; }
+  .label { font-size: 2.2rem; font-weight: 800; color: #fff; border-radius: 8px; padding: 6px 16px; text-align: center; }
+  .label.good { background: var(--good); }
+  .label.defective { background: var(--bad); }
+  .label.unsure { background: var(--unsure); }
+  .pics { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 10px 0; }
+  .pics figure { margin: 0; }
+  .pics img { width: 100%; aspect-ratio: 1; object-fit: contain; background: #e5e7eb; border-radius: 6px; display: block; }
+  .pics figcaption { font-size: .9rem; color: var(--muted); text-align: center; }
+  .nums { display: flex; flex-wrap: wrap; gap: 6px 22px; font-size: 1.05rem; }
+  .nums b { font-variant-numeric: tabular-nums; }
+  video { width: 100%; background: #000; border-radius: 6px; display: block; }
+  .counter { font-size: 1.1rem; font-weight: 700; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Good-Parts Inspector</h1>
+  <span class="sub">Learns from good parts only, then flags anything that looks different.</span>
+</header>
+<div id="serverErr" class="error" style="margin:12px 16px 0" role="alert"></div>
+
+<main>
+  <div class="col">
+    <section aria-labelledby="h-obj">
+      <h2 id="h-obj">1. Object</h2>
+      <div class="row">
+        <label for="objSelect">Trained objects</label>
+        <select id="objSelect"><option value="">Loading…</option></select>
+        <button id="refreshObj" class="secondary" title="Reload the list">Refresh</button>
+      </div>
+      <div class="row">
+        <label for="newName">New object</label>
+        <input id="newName" type="text" placeholder="e.g. bottle" maxlength="40" autocomplete="off">
+        <button id="useNew" class="secondary">Use this name</button>
+      </div>
+      <div class="muted">Names: lowercase letters, digits, _ or -.</div>
+      <div id="objErr" class="error" role="alert"></div>
+      <p class="current">Current object: <b id="current">none</b></p>
+    </section>
+
+    <section aria-labelledby="h-train">
+      <h2 id="h-train">2. Train on good photos</h2>
+      <div class="row">
+        <input id="trainFiles" type="file" multiple accept="image/png,image/jpeg,image/bmp,.zip">
+      </div>
+      <div class="row">
+        <label for="backbone">Backbone</label>
+        <select id="backbone">
+          <option value="resnet18">resnet18 (fast, default)</option>
+          <option value="wide_resnet50">wide_resnet50 (more accurate, ~4x slower)</option>
+        </select>
+      </div>
+      <div class="row">
+        <button id="trainBtn" disabled>Train</button>
+        <span class="muted">At least 5 photos of good parts, or a .zip of them.</span>
+      </div>
+      <div id="trainErr" class="error" role="alert"></div>
+      <div class="row" aria-live="polite">
+        <span class="badge" id="stateBadge">—</span>
+        <span id="stateText" class="muted">Pick an object first.</span>
+      </div>
+      <pre class="log" id="trainLog"></pre>
+    </section>
+
+    <section aria-labelledby="h-cam">
+      <h2 id="h-cam">Webcam</h2>
+      <div class="row">
+        <button id="camToggle" class="secondary">Use webcam</button>
+      </div>
+      <div id="camErr" class="error" role="alert"></div>
+      <div id="camBox" class="hidden">
+        <video id="video" autoplay playsinline muted></video>
+        <div class="row">
+          <button id="capOne">Capture good sample</button>
+          <button id="capBurst" class="secondary">Capture 10 (burst)</button>
+          <button id="capClear" class="secondary">Clear</button>
+          <span class="counter" id="capCount" aria-live="polite">0 captured</span>
+        </div>
+        <div class="row">
+          <button id="camTrain">Train on captured</button>
+          <button id="camInspect">Inspect now</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="col">
+    <section aria-labelledby="h-insp">
+      <h2 id="h-insp">3. Inspect a photo</h2>
+      <div id="drop" class="drop" tabindex="0" role="button" aria-label="Choose or drop a photo to inspect">
+        <b>Drop a photo here</b> or click to choose one
+        <input id="inspectFile" type="file" accept="image/png,image/jpeg,image/bmp" class="hidden">
+      </div>
+      <div id="inspErr" class="error" role="alert"></div>
+      <div id="results"></div>
+    </section>
+  </div>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+const NAME_RE = /^[a-z0-9_-]{1,40}$/;
+const LABELS = { good: "GOOD", defective: "DEFECTIVE", unsure: "UNSURE – send to human" };
+let current = null, pollTimer = null, captured = [], stream = null;
+
+// ---------- helpers ----------
+async function api(path, opts = {}) {
+  let r;
+  try { r = await fetch(path, opts); }
+  catch { throw new Error("Cannot reach the server. Is it running?"); }
+  const text = await r.text();
+  let body = text;
+  try { body = text ? JSON.parse(text) : null; } catch {}
+  if (!r.ok) {
+    const d = body && body.detail;
+    if (typeof d === "string") throw new Error(d);
+    if (Array.isArray(d)) throw new Error(d.map(e => e.msg).join("; "));
+    throw new Error(`${r.status} ${r.statusText}`);
+  }
+  return body;
+}
+const showErr = (el, e) => { el.textContent = e ? (e.message || String(e)) : ""; };
+function needObject(errEl) {
+  if (current) return true;
+  showErr(errEl, "Pick an object or type a new object name first.");
+  return false;
+}
+
+// ---------- 1. object picker ----------
+async function loadObjects() {
+  const sel = $("#objSelect");
+  try {
+    const list = await api("/objects");
+    sel.innerHTML = '<option value="">— choose —</option>';
+    for (const o of list) sel.add(new Option(`${o.name} (${o.state})`, o.name));
+    sel.value = list.some(o => o.name === current) ? current : "";
+    showErr($("#objErr"));
+  } catch (e) { showErr($("#objErr"), e); }
+}
+$("#objSelect").onchange = e => e.target.value && setObject(e.target.value);
+$("#refreshObj").onclick = loadObjects;
+$("#useNew").onclick = () => {
+  const name = $("#newName").value.trim().toLowerCase();
+  if (!NAME_RE.test(name)) return showErr($("#objErr"), "Name must be 1-40 chars of a-z, 0-9, _ or -.");
+  showErr($("#objErr"));
+  setObject(name);
+};
+$("#newName").onkeydown = e => { if (e.key === "Enter") $("#useNew").click(); };
+
+function setObject(name) {
+  current = name;
+  $("#current").textContent = name;
+  $("#trainBtn").disabled = false;
+  $("#results").innerHTML = "";
+  [$("#trainErr"), $("#inspErr")].forEach(el => showErr(el));
+  stopPoll();
+  refreshStatus();
+}
+
+// ---------- 2. training ----------
+function renderStatus(s) {
+  const badge = $("#stateBadge");
+  badge.textContent = s ? s.state : "not trained";
+  badge.className = "badge " + (s ? s.state : "");
+  let t = "";
+  if (s) {
+    if (s.backbone) t += `Backbone ${s.backbone}. `;
+    if (s.n_images) t += `${s.n_images} images. `;
+    if (s.state === "training" && s.started) t += `Training for ${Math.round(Date.now() / 1000 - s.started)} s…`;
+    if (s.state === "ready" && s.train_s != null) t += `Trained in ${s.train_s} s.`;
+    if (s.state === "ready" && s.train_s == null) t += "Model loaded from disk.";
+    if (s.state === "failed") t += `Error: ${s.error}`;
+  } else t = "Upload good photos to train this object.";
+  $("#stateText").textContent = t;
+  $("#trainLog").textContent = (s && s.log || []).join("\n");
+}
+
+async function refreshStatus() {
+  const name = current;
+  try {
+    const s = await api(`/objects/${name}/status`);
+    if (name !== current) return;
+    renderStatus(s);
+    if (s.state === "queued" || s.state === "training") startPoll();
+    else if (pollTimer) { stopPoll(); loadObjects(); }  // training just finished: refresh the list
+  } catch (e) {
+    if (name !== current) return;
+    stopPoll();
+    if (/unknown object/.test(e.message)) renderStatus(null);
+    else showErr($("#trainErr"), e);
+  }
+}
+function startPoll() { if (!pollTimer) pollTimer = setInterval(refreshStatus, 1000); }
+function stopPoll() { clearInterval(pollTimer); pollTimer = null; }
+
+async function trainWith(files) {  // files: array of [blob, filename]
+  const err = $("#trainErr");
+  if (!needObject(err)) return;
+  showErr(err);
+  const fd = new FormData();
+  for (const [blob, fname] of files) fd.append("files", blob, fname);
+  fd.append("backbone", $("#backbone").value);
+  const btns = [$("#trainBtn"), $("#camTrain")];
+  btns.forEach(b => b.disabled = true);
+  renderStatus({ state: "uploading", backbone: $("#backbone").value, log: [`uploading ${files.length} file(s)…`] });
+  try {
+    await api(`/objects/${current}/train`, { method: "POST", body: fd });
+    loadObjects();
+    refreshStatus();
+  } catch (e) { showErr(err, e); renderStatus(null); }
+  finally { btns.forEach(b => b.disabled = false); }
+}
+$("#trainBtn").onclick = () => {
+  const files = [...$("#trainFiles").files];
+  if (!files.length) return showErr($("#trainErr"), "Choose some good photos or a .zip first.");
+  trainWith(files.map(f => [f, f.name]));
+};
+
+// ---------- 3. inspect ----------
+async function inspect(blob, fname) {
+  const err = $("#inspErr");
+  if (!needObject(err)) return;
+  showErr(err);
+  const fd = new FormData();
+  fd.append("file", blob, fname);
+  try {
+    const r = await api(`/objects/${current}/predict`, { method: "POST", body: fd });
+    addResult(r, blob, fname);
+  } catch (e) { showErr(err, e); }
+}
+
+function addResult(r, blob, fname) {
+  const card = document.createElement("div");
+  card.className = "result";
+  card.innerHTML = `
+    <div class="label"></div>
+    <div class="pics">
+      <figure><img alt="Inspected photo"><figcaption>Photo</figcaption></figure>
+      <figure><img alt="Anomaly heatmap"><figcaption>Heatmap (red = unusual)</figcaption></figure>
+    </div>
+    <div class="nums">
+      <span>Score <b class="score"></b></span>
+      <span>Threshold <b class="thr"></b></span>
+      <span>Unsure band <b class="band"></b></span>
+      <span>Time <b class="ms"></b></span>
+    </div>
+    <div class="row">
+      <button class="secondary fb">This was actually good</button>
+      <span class="fbmsg muted"></span>
+    </div>
+    <div class="error" role="alert"></div>`;
+  const setLabel = l => { const el = card.querySelector(".label"); el.textContent = LABELS[l] || l; el.className = "label " + l; };
+  setLabel(r.label);
+  const [photo, heat] = card.querySelectorAll("img");
+  photo.src = URL.createObjectURL(blob);
+  if (r.heatmap_png_base64) heat.src = "data:image/png;base64," + r.heatmap_png_base64;
+  card.querySelector(".score").textContent = r.score.toFixed(3);
+  card.querySelector(".thr").textContent = r.threshold.toFixed(3);
+  card.querySelector(".band").textContent = r.unsure_band.map(v => v.toFixed(3)).join(" – ");
+  card.querySelector(".ms").textContent = `${r.ms} ms`;
+  const fb = card.querySelector(".fb"), obj = current;
+  if (r.label === "good") fb.classList.add("hidden");
+  fb.onclick = async () => {
+    fb.disabled = true;
+    const fd = new FormData();
+    fd.append("file", blob, fname);
+    try {
+      const res = await api(`/objects/${obj}/feedback`, { method: "POST", body: fd });
+      setLabel(res.new_label);
+      card.querySelector(".fbmsg").textContent = `Learned as good. New label: ${LABELS[res.new_label] || res.new_label}`;
+      fb.classList.add("hidden");
+    } catch (e) { showErr(card.querySelector(".error"), e); fb.disabled = false; }
+  };
+  const list = $("#results");
+  list.prepend(card);
+  while (list.children.length > 5) list.lastChild.remove();  // keep the page light
+}
+
+const drop = $("#drop"), inspectFile = $("#inspectFile");
+drop.onclick = () => inspectFile.click();
+drop.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); inspectFile.click(); } };
+inspectFile.onchange = () => { const f = inspectFile.files[0]; if (f) inspect(f, f.name); inspectFile.value = ""; };
+drop.ondragover = e => { e.preventDefault(); drop.classList.add("over"); };
+drop.ondragleave = () => drop.classList.remove("over");
+drop.ondrop = e => {
+  e.preventDefault(); drop.classList.remove("over");
+  const f = e.dataTransfer.files[0];
+  if (f) inspect(f, f.name);
+};
+
+// ---------- webcam ----------
+const video = $("#video");
+$("#camToggle").onclick = async () => {
+  const err = $("#camErr");
+  showErr(err);
+  if (stream) {
+    stream.getTracks().forEach(t => t.stop());
+    stream = null;
+    $("#camBox").classList.add("hidden");
+    $("#camToggle").textContent = "Use webcam";
+    return;
+  }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia)
+    return showErr(err, "Webcam needs the page opened as http://localhost:8000 (or https).");
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+    video.srcObject = stream;
+    $("#camBox").classList.remove("hidden");
+    $("#camToggle").textContent = "Stop webcam";
+  } catch (e) { showErr(err, "Could not open the webcam: " + e.message); }
+};
+
+function grab() {
+  if (!video.videoWidth) return Promise.reject(new Error("Webcam is not ready yet."));
+  const scale = Math.min(1, 640 / video.videoWidth);  // smaller upload, the model works at 224 px anyway
+  const c = document.createElement("canvas");
+  c.width = Math.round(video.videoWidth * scale);
+  c.height = Math.round(video.videoHeight * scale);
+  c.getContext("2d").drawImage(video, 0, 0, c.width, c.height);
+  return new Promise((ok, fail) => c.toBlob(b => b ? ok(b) : fail(new Error("Could not capture a frame.")), "image/jpeg", 0.92));
+}
+const updateCount = () => { $("#capCount").textContent = `${captured.length} captured`; };
+async function capture(n) {
+  try {
+    for (let i = 0; i < n; i++) {
+      captured.push(await grab());
+      updateCount();
+      if (i < n - 1) await new Promise(r => setTimeout(r, 250));
+    }
+  } catch (e) { showErr($("#camErr"), e); }
+}
+$("#capOne").onclick = () => capture(1);
+$("#capBurst").onclick = () => capture(10);
+$("#capClear").onclick = () => { captured = []; updateCount(); };
+$("#camTrain").onclick = () => {
+  if (captured.length < 5) return showErr($("#camErr"), `Capture at least 5 good samples (have ${captured.length}).`);
+  showErr($("#camErr"));
+  trainWith(captured.map((b, i) => [b, `cam${i}.jpg`]));
+};
+$("#camInspect").onclick = async () => {
+  try { inspect(await grab(), "webcam.jpg"); } catch (e) { showErr($("#camErr"), e); }
+};
+
+// ---------- start ----------
+api("/health").then(() => showErr($("#serverErr")), e => showErr($("#serverErr"), e));
+loadObjects();
+</script>
+</body>
+</html>

@@ -1,0 +1,7 @@
+.venv/
+weights/
+models/
+data/
+__pycache__/
+*.pt
+.pytest_cache/
