@@ -45,6 +45,40 @@ New endpoints: `DELETE /objects/{name}` (QC inspector or supervisor; `?purge_log
 
 Browser test of all pages: start both servers, then `python netrix_ui_test.py --cleanup` (screenshots in `netrix_shots/`).
 
+### Line features
+
+**Voice.** After each inspection on the dashboard the verdict is spoken with the browser's built-in voices (offline on
+Windows): "Good." / "Defective, middle left." (the first spot's position, as under *Where*) / "Unsure, please check." /
+"Retake the photo: too dark compared with the training photos." The speaker button next to *3D view / 2D heatmap /
+Layer map* mutes it; the choice is remembered in the browser (`localStorage` `netrix.voice`, on by default). A new
+verdict cuts off one still being spoken. The button is hidden in browsers without speech.
+
+**Strictness per part.** In the Object library every trained part has a slider from *Lenient 0.8* through *Normal 1.0*
+to *Strict 1.25* (QC inspectors and supervisors; operators see the value). It is saved when you let go. The line the
+model decides with becomes `threshold / strictness`, and the unsure band moves with it: strict flags more (fewer missed
+defects), lenient flags less (fewer false alarms). The calibrated threshold itself is kept, so 1.0 is always "as
+trained"; the "retake photo" check is not affected. Saved in the model file (`strictness`; older files load as 1.0)
+and kept when the part is retrained. API: `PUT /objects/{name}/strictness` with `{"factor": 0.8..1.25}`
+(400 outside that range, 403 for operators); `strictness` is also returned by `/status` and `/predict`.
+
+**Judge test mode (folder in, CSV out).** For a test set without labels:
+```
+python judge.py bottle test_photos --out results.csv
+```
+Runs the trained model on this laptop (no server needed) on every image in the folder and its sub-folders, writes
+`file, label, score, threshold, ratio, ms, where, reasons` (ratio = score / threshold, where = defect positions), then
+prints the counts and the average and slowest ms. The same is on the **Evaluation** page as *Judge test mode*: pick a
+folder, each photo goes through `/predict?log=false` (so it stays out of the history) with a progress bar, a results
+table (thumbnail, file, verdict, score, ms) that can be sorted by verdict, and *Download CSV* with the same columns.
+
+**Conveyor mode.** On the dashboard, *Use the webcam* under Inspect, then switch on *Conveyor mode* with the belt empty.
+The page compares each video frame with the previous one on a small 64x48 grey copy; when part of the picture changes
+(a part coming in) and then stays still for 0.5 s, it captures the frame and inspects it like *Inspect this frame*
+(logged, and spoken). It then waits for the next change; when the belt is empty again nothing is inspected. A strip shows
+inspected / good / defective / unsure / retake and parts per minute, with the last 5 verdicts as coloured chips.
+*Motion sensitivity* sets how much of the picture must change (10 = 0.5 %, 6 = 2.5 %, 1 = 5 %) and shows the current
+motion. *Inspect now* inspects the current frame by hand. Keep the camera and the lighting fixed.
+
 ## Main UI: the Sightline frontend (Next.js, in `frontend/`)
 The designed UI talks to the same FastAPI backend. Two terminals:
 
@@ -109,6 +143,7 @@ it is not a 3D scan of the part's real shape. The webcam only works on `http://l
 | POST | /meter, /meter/{id} | start a capture session; send each captured photo to get the "enough samples?" meter |
 | GET  | /log, /log.csv, /log/{id}/heatmap.png | inspection log (filters `object`, `hours`) |
 | GET  | /report, /report.html | shift summary as JSON, or a printable page |
+| PUT  | /objects/{name}/strictness | JSON `{"factor": 0.8..1.25}`, QC inspector or supervisor; line = threshold / factor (see Strictness per part) |
 
 Object names: lowercase letters, digits, `_` or `-`. Models are saved in `models/`, uploaded photos in `data/`,
 the inspection log and its heatmaps in `logs/`.
