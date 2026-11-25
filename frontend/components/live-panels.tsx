@@ -160,7 +160,8 @@ export function WebcamCapture({ mode, onCaptured, onInspect, disabled }: {
 type Tally = { inspected: number; good: number; defective: number; unsure: number; retake: number };
 const EMPTY_TALLY: Tally = { inspected: 0, good: 0, defective: 0, unsure: 0, retake: 0 };
 const SETTLE_MS = 500;               // a part has arrived when the picture has been still this long after moving
-const motionThreshold = (sensitivity: number) => 2 + (10 - sensitivity) * 3;  // 10 = most sensitive (2), 1 = calmest (29)
+const PIXEL_CHANGE = 25;          // a pixel counts as changed when its grey level moves this much (camera noise stays below)
+const motionThreshold = (sensitivity: number) => 0.5 * (11 - sensitivity);  // % of the picture; 10 = 0.5 %, 6 = 2.5 %, 1 = 5 %
 
 /** Conveyor mode: watch the webcam, inspect each part once it has arrived and stopped moving. */
 function ConveyorControls({ video, grab, onInspect, disabled }: {
@@ -206,13 +207,14 @@ function ConveyorControls({ video, grab, onInspect, disabled }: {
   const inspectRef = useRef(inspectNow);
   inspectRef.current = inspectNow;
 
-  // motion watch: 64x48 grey frames, mean absolute difference (0-255) between consecutive frames
+  // motion watch: 64x48 grey frames; motion = % of pixels that changed clearly since the previous frame
   useEffect(() => {
     if (!on) return;
     const canvas = document.createElement("canvas");
     canvas.width = 64; canvas.height = 48;
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
     let prev: Float32Array | null = null;
+    let empty: Float32Array | null = null;   // the belt with no part: the picture when conveyor mode is switched on
     let state: "waiting" | "moving" | "settling" = "waiting";
     let stillSince = 0;
     let lastShown = 0;
@@ -223,10 +225,9 @@ function ConveyorControls({ video, grab, onInspect, disabled }: {
       const px = ctx.getImageData(0, 0, 64, 48).data;
       const grey = new Float32Array(64 * 48);
       for (let i = 0; i < grey.length; i++) grey[i] = 0.299 * px[i * 4] + 0.587 * px[i * 4 + 1] + 0.114 * px[i * 4 + 2];
-      if (!prev) { prev = grey; return; }
-      let diff = 0;
-      for (let i = 0; i < grey.length; i++) diff += Math.abs(grey[i] - prev[i]);
-      diff /= grey.length;
+      const changedPct = (a: Float32Array, b: Float32Array) => { let n = 0; for (let i = 0; i < a.length; i++) if (Math.abs(a[i] - b[i]) > PIXEL_CHANGE) n++; return (100 * n) / a.length; };
+      if (!prev) { prev = grey; empty = grey; return; }
+      const diff = changedPct(grey, prev);
       prev = grey;
       const now = performance.now();
       if (now - lastShown > 200) { setMotion(diff); lastShown = now; }
@@ -239,7 +240,8 @@ function ConveyorControls({ video, grab, onInspect, disabled }: {
         state = "settling"; stillSince = now; setPhase("settling");
       } else if (now - stillSince >= SETTLE_MS && !disabledRef.current) {
         state = "waiting";                                          // inspected once; wait for the next change
-        inspectRef.current();
+        if (empty && changedPct(grey, empty) <= thresholdRef.current) { empty = grey; setPhase("waiting"); }  // part left: empty belt again, nothing to inspect
+        else inspectRef.current();
       }
     }, 80);
     return () => window.clearInterval(timer);
@@ -263,10 +265,10 @@ function ConveyorControls({ video, grab, onInspect, disabled }: {
           <div key={label} className={`tally-${label.replace(" ", "-")}`}><strong>{n}</strong><span>{label}</span></div>)}
       </div>
       <div className="conveyor-recent" aria-label="Last five verdicts">{recent.length ? recent.map((v, i) => <span key={i} className={`chip chip-${v.toLowerCase()}`}>{v}</span>) : <small>No parts yet</small>}</div>
-      <label className="conveyor-sensitivity"><span>Motion sensitivity <b>{sensitivity}</b> <small>(motion now {motion.toFixed(1)}, trigger above {threshold})</small></span>
+      <label className="conveyor-sensitivity"><span>Motion sensitivity <b>{sensitivity}</b> <small>(motion now {motion.toFixed(1)} % of the picture, trigger above {threshold} %)</small></span>
         <input type="range" min={1} max={10} step={1} value={sensitivity} onChange={(event) => setSensitivity(Number(event.target.value))} aria-label="Motion sensitivity" />
-        <span className="motion-bar" aria-hidden="true"><i style={{ width: `${Math.min(100, (motion / 40) * 100)}%` }} /><b style={{ left: `${Math.min(100, (threshold / 40) * 100)}%` }} /></span></label>
-      <p className="conveyor-note">Keep the camera and the lighting fixed. Each part is inspected once, half a second after it stops moving, and logged like any other inspection.</p>
+        <span className="motion-bar" aria-hidden="true"><i style={{ width: `${Math.min(100, (motion / 10) * 100)}%` }} /><b style={{ left: `${Math.min(100, (threshold / 10) * 100)}%` }} /></span></label>
+      <p className="conveyor-note">Keep the camera and the lighting fixed, and switch this on with the belt empty. Each part is inspected once, half a second after it stops moving, and logged like any other inspection. When the belt is empty again nothing is inspected.</p>
       <button type="button" className="conveyor-now" onClick={inspectNow} disabled={disabled || phase === "inspecting"}><ScanLine size={14} /> Inspect now</button>
       {error && <p className="cam-error" role="alert">{error}</p>}
     </>}
