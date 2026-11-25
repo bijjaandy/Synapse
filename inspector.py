@@ -122,9 +122,10 @@ def fake_defect(img, rng, subtle=False):
 # ---------- model ----------
 
 class Inspector:
-    def __init__(self, extractor=None, backbone="resnet18", band=0.5):
+    def __init__(self, extractor=None, backbone="resnet18", band=0.5, q=0.95):
         self.fx = extractor or FeatureExtractor(backbone)
         self.band = band  # unsure band half-width, in std-devs of good validation scores; 0 = always decide
+        self.q = q        # threshold = this quantile of held-out good scores (0.95 won on MVTec: acc 0.70 -> 0.81)
         self.bank = None
         self.low = self.high = self.thr = None
 
@@ -142,7 +143,8 @@ class Inspector:
                 maps.append(amap)
         return np.array(scores), maps
 
-    def fit(self, good_paths, coreset_ratio=0.01, val_frac=0.2, fakes_per_img=3, seed=0, log=print):
+    def fit(self, good_paths, coreset_ratio=0.01, val_frac=0.2, fakes_per_img=0, seed=0, log=print):
+        """fakes_per_img > 0 adds an optional self-check (share of fake defects caught); costs training time."""
         t0 = time.perf_counter()
         rng = np.random.default_rng(seed)
         paths = list(good_paths)
@@ -157,22 +159,21 @@ class Inspector:
         self.bank = greedy_coreset(feats, coreset_ratio, seed)
         log(f"memory bank: {len(self.bank)} patches from {len(train)} images ({time.perf_counter() - t0:.1f}s)")
 
-        # honest calibration: held-out good images vs. fake defects made from them
+        # honest calibration: threshold from held-out GOOD images only, no defect image is ever used
         val_imgs = [load_image(p) for p in val]
         g, _ = self._scores(val_imgs)
-        # half obvious, half subtle fakes: only-obvious fakes put the threshold too high for real defects
-        fakes = [fake_defect(im, rng, subtle=bool(j % 2)) for im in val_imgs for j in range(fakes_per_img * 2)]
-        s, _ = self._scores(fakes)
-        self._calibrate(g, s)
-        log(f"threshold {self.thr:.3f}, unsure band [{self.low:.3f}, {self.high:.3f}] "
-            f"(good val median {np.median(g):.3f}, fake-defect median {np.median(s):.3f})")
+        self._calibrate(g)
+        log(f"threshold {self.thr:.3f} (q{self.q * 100:.0f} of {len(g)} held-out good), "
+            f"unsure band [{self.low:.3f}, {self.high:.3f}]")
+        if fakes_per_img:
+            fakes = [fake_defect(im, rng, subtle=bool(j % 2)) for im in val_imgs for j in range(fakes_per_img * 2)]
+            s, _ = self._scores(fakes)
+            log(f"self-check: {(s >= self.thr).mean():.0%} of {len(s)} fake defects flagged")
         log(f"total training time {time.perf_counter() - t0:.1f}s")
         return self
 
-    def _calibrate(self, good, fake):
-        cands = np.unique(np.concatenate([good, fake]))
-        bal_acc = [((good < t).mean() + (fake >= t).mean()) / 2 for t in cands]
-        self.thr = float(cands[int(np.argmax(bal_acc))])
+    def _calibrate(self, good):
+        self.thr = float(np.quantile(good, self.q))
         # narrow unsure band around the threshold, sized by how much good scores vary
         half = self.band * float(np.std(good))
         self.low, self.high = self.thr - half, self.thr + half

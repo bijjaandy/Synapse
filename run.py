@@ -4,7 +4,7 @@
   python run.py predict --image photo.png                  --model bottle.pt --heatmap out.png
   python run.py feedback --image false_alarm.png           --model bottle.pt
   python run.py bench   --root mvtec_ad                    (all categories -> results.csv)
-Options: --backbone resnet18|wide_resnet50  --coreset 0.01  --band 0.5  --only screw,pill  --out results.csv
+Options: --backbone resnet18|wide_resnet50  --coreset 0.01  --band 0.5  --q 0.95  --selfcheck  --only screw,pill  --out results.csv
 Data folder follows MVTec AD layout: train/good, test/<type>, ground_truth/<type>.
 """
 import argparse
@@ -112,13 +112,15 @@ def main():
     ap.add_argument("--coreset", type=float, default=0.01)
     ap.add_argument("--backbone", default="resnet18", choices=["resnet18", "wide_resnet50"])
     ap.add_argument("--band", type=float, default=0.5, help="unsure band half-width in std-devs; 0 = always decide")
+    ap.add_argument("--q", type=float, default=0.95, help="threshold quantile of held-out good scores")
+    ap.add_argument("--selfcheck", action="store_true", help="also score fake defects (slower)")
     ap.add_argument("--only", help="comma-separated categories for bench")
     ap.add_argument("--out", default="results.csv")
     a = ap.parse_args()
 
     if a.cmd == "train":
-        m = Inspector(backbone=a.backbone, band=a.band).fit(
-            list_images(Path(a.data) / "train" / "good"), coreset_ratio=a.coreset)
+        m = Inspector(backbone=a.backbone, band=a.band, q=a.q).fit(
+            list_images(Path(a.data) / "train" / "good"), coreset_ratio=a.coreset, fakes_per_img=int(a.selfcheck))
         m.save(a.model)
     elif a.cmd == "eval":
         for k, v in evaluate(Inspector.load(a.model), a.data).items():
@@ -150,7 +152,8 @@ def main():
             w = None
             for c in cats:
                 t0 = time.perf_counter()
-                m = Inspector(fx, band=a.band).fit(list_images(c / "train" / "good"), coreset_ratio=a.coreset)
+                m = Inspector(fx, band=a.band, q=a.q).fit(list_images(c / "train" / "good"), coreset_ratio=a.coreset,
+                                                          fakes_per_img=int(a.selfcheck))
                 row = {"category": c.name, "train_s": time.perf_counter() - t0, **evaluate(m, c)}
                 print({k: round(v, 4) if isinstance(v, float) else v for k, v in row.items()})
                 if w is None:
@@ -160,7 +163,8 @@ def main():
                 f.flush()  # keep partial results if a long run is interrupted
                 rows.append(row)
         print("saved", a.out)
-        summarize(rows, f"({a.backbone}, coreset {a.coreset}, band {a.band}) ")
+        summarize(rows, f"({a.backbone}, coreset {a.coreset}, band {a.band}, q {a.q}"
+                        f"{', selfcheck' if a.selfcheck else ''}) ")
 
 
 if __name__ == "__main__":
