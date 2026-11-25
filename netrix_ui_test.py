@@ -98,6 +98,12 @@ def main():
                 page.wait_for_timeout(2500)
                 print(f"inspect {name}:", page.inner_text(".verdict strong"))
             print("spoken:", page.evaluate("window.__spoken"))
+            ask = page.locator(".ask-ai")
+            print("ask AI button (operator):", ask.count(), end=" ")
+            if ask.count():
+                ask.first.click()
+                page.wait_for_selector(".ask-ai-answer", timeout=120_000)
+                print("-> inline answer:", page.inner_text(".ask-ai-answer").replace("\n", " ")[:140])
             vt = page.locator(".voice-toggle")
             print("voice toggle:", vt.count(), vt.get_attribute("aria-pressed") if vt.count() else "-", end=" ")
             if vt.count():
@@ -142,6 +148,13 @@ def main():
                 mine.first.locator(".verify-defect").click()
                 page.wait_for_timeout(1500)
                 print("after confirm:", page.locator(".verify-item", has_text=PART).count(), "of ours left")
+            import urllib.request, json as _json
+            rid = _json.load(urllib.request.urlopen(f"http://localhost:8000/log?object={PART}&limit=1"))[0]["id"]
+            page.goto(f"{URL}/evaluation?ask={rid}", wait_until="networkidle")
+            page.wait_for_function("document.querySelectorAll('.chat-msg.assistant').length >= 1 && !document.querySelector('.chat-msg .spin')", timeout=150_000)
+            print(f"ask={rid}: question:", page.locator(".chat-msg.user").first.inner_text()[:60], "| reply:", page.locator(".chat-msg.assistant").last.inner_text().replace("\n", " ")[:160])
+            print("url after ask:", page.url)
+            page.wait_for_selector(".verify-card", timeout=10000)
             # judge test mode: a folder of three test photos through the test part, not logged
             import shutil
             jdir = tmp / "judge"; (jdir / "sub").mkdir(parents=True, exist_ok=True)

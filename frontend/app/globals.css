@@ -952,3 +952,7 @@ body { font-family:var(--font-ui); font-size:16px; }
 .motion-bar b { position: absolute; top: -3px; bottom: -3px; width: 2px; background: #c4501a; }
 .conveyor-note { margin: 0; font-size: .72rem; line-height: 1.45; color: var(--forest); opacity: .8; }
 .conveyor-now { justify-self: start; }
+
+/* Ask AI why (dashboard result) */
+.ask-ai { display: inline-flex; align-items: center; gap: .35rem; margin-top: .5rem; text-decoration: none; }
+.ask-ai-answer { margin: .5rem 0 0; font-size: .85rem; line-height: 1.5; color: var(--cream); opacity: .9; }

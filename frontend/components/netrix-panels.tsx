@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import useSWR from "swr";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Bot, Check, CircleAlert, LoaderCircle, Send, ShieldCheck, X } from "lucide-react";
-import { askAssistant, assistantStatus, getSummary, getVerifyQueue, heatmapUrl, photoUrl, verifyInspection,
+import { askAssistant, assistantStatus, loadSession, getSummary, getVerifyQueue, heatmapUrl, photoUrl, verifyInspection,
          type ChatMessage, type QueueItem, type Summary } from "@/lib/api";
 import { objectCategories } from "@/config/content";
 
@@ -61,6 +61,28 @@ function VerifyItem({ item, onDone }: { item: QueueItem; onDone: () => void }) {
 const SUGGESTIONS = ["How many parts were inspected and how many were defective?", "Which part has the most defects?",
                      "How does Netrix IQ decide a part is defective?", "What are the system's weak spots?"];
 
+export const askPrompt = (id: number) => `Explain inspection #${id}: why did it get this result and what should I check?`;
+
+/** "Ask AI why" for a logged inspection. QC inspectors / supervisors go to Evaluation (?ask=id); operators can't open
+ *  Evaluation, but /assistant doesn't need a role, so they get the answer right here. */
+export function AskAiButton({ inspectionId }: { inspectionId: number }) {
+  const [role, setRole] = useState<string | null>(null);
+  const [answer, setAnswer] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { setRole(loadSession()?.role ?? null); setAnswer(null); }, [inspectionId]);
+  if (role === "inspector" || role === "supervisor")
+    return <a className="layers-toggle ask-ai" href={`/evaluation?ask=${inspectionId}`}><Bot size={13} /> Ask AI why</a>;
+  return <div className="ask-ai-inline">
+    <button type="button" className="layers-toggle ask-ai" disabled={busy} onClick={async () => {
+      setBusy(true);
+      try { setAnswer((await askAssistant(askPrompt(inspectionId), [])).answer); }
+      catch (cause) { setAnswer(cause instanceof Error ? cause.message : String(cause)); }
+      finally { setBusy(false); }
+    }}>{busy ? <LoaderCircle size={13} className="spin" /> : <Bot size={13} />} Ask AI why</button>
+    {answer && <p className="ask-ai-answer">{answer}</p>}
+  </div>;
+}
+
 export function AssistantChat() {
   const { data: status } = useSWR("assistant-status", assistantStatus, { refreshInterval: 15000 });
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -68,6 +90,16 @@ export function AssistantChat() {
   const [busy, setBusy] = useState(false);
   const list = useRef<HTMLDivElement>(null);
   useEffect(() => { list.current?.scrollTo({ top: list.current.scrollHeight, behavior: "smooth" }); }, [messages, busy]);
+  const asked = useRef(false);
+  useEffect(() => {  // /evaluation?ask=<id> (from "Ask AI why" on the dashboard): ask about that inspection once
+    const id = new URLSearchParams(window.location.search).get("ask");
+    if (asked.current || !id || !/^\d+$/.test(id)) return;
+    asked.current = true;
+    setInput(askPrompt(Number(id)));
+    send(askPrompt(Number(id)));
+    window.history.replaceState(null, "", window.location.pathname);  // a reload doesn't ask again
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function send(text: string) {
     const message = text.trim();
