@@ -894,3 +894,14 @@ body { font-family:var(--font-ui); font-size:16px; }
 .remove-part-yes { background: var(--defect); color: #fff; }
 .remove-part-no { background: transparent; border-color: var(--line, rgba(0,0,0,.2)) !important; color: inherit; }
 .remove-part-err { display: block; color: var(--defect); margin-top: .25rem; }
+
+/* phone fixes: the summary column must shrink to the screen (its auto track grew to the widest child) */
+.summary-view { grid-template-columns: minmax(0, 1fr); }
+.summary-view > *, .summary-grid > * { min-width: 0; }
+@media (max-width: 520px) {
+  .summary-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .summary-table { font-size: .8rem; }
+  .summary-dl { grid-template-columns: minmax(0, 1fr); }
+  .summary-dl > div { display: flex; justify-content: space-between; align-items: baseline; gap: .8rem; min-width: 0; }
+  .summary-dl dd { white-space: normal; overflow-wrap: anywhere; }
+}
