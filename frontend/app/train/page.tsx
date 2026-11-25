@@ -1,6 +1,6 @@
-import InspectionLab from "@/components/inspection-lab";
-import { AppShell, PageIntro } from "@/components/netrix-shell";
+import { AppShell } from "@/components/netrix-shell";
+import TrainWorkspace from "@/components/train-workspace";
 
 export default function TrainPage() {
-  return <AppShell><PageIntro title="Train" text="Teach a new part from good photos only." /><InspectionLab view="train" /></AppShell>;
+  return <AppShell><TrainWorkspace /></AppShell>;
 }

@@ -10,7 +10,11 @@ from pathlib import Path
 
 from playwright.sync_api import sync_playwright
 
-from ui_smoke_test import PART, cleanup, make_photos
+import ui_smoke_test
+from ui_smoke_test import cleanup, make_photos
+
+PRODUCT = "UI Test Washer"            # created through "+ Add new product"; its id must become ui_test_washer
+PART = ui_smoke_test.PART = "ui_test_washer"  # cleanup() removes this part (model, photos, details, log rows)
 
 URL = "http://localhost:3000"
 SHOTS = Path(__file__).resolve().parent / "netrix_shots"
@@ -18,6 +22,7 @@ SHOTS = Path(__file__).resolve().parent / "netrix_shots"
 
 def main():
     SHOTS.mkdir(exist_ok=True)
+    cleanup()  # a test product left by an earlier failed run would block "+ Add new product" (name taken)
     tmp = Path(tempfile.mkdtemp(prefix="netrix_ui_"))
     train_files, _good, _bad = make_photos(tmp)
     errors, failures = [], []
@@ -85,16 +90,28 @@ def main():
         def dashboard():
             page.goto(f"{URL}/dashboard", wait_until="networkidle")
             print("old /dashboard ->", page.url)
-            page.goto(f"{URL}/train", wait_until="networkidle")
-            page.fill("#custom-part", PART)
-            page.click(".custom-part button")
-            page.set_input_files("#train input[type=file]", [str(f) for f in train_files])
-            page.select_option(".train-options select", "resnet18")
-            page.click(".button-orange")
-            page.wait_for_selector(".status-icon.done", timeout=180_000)
-            print("trained:", " | ".join(page.inner_text(".train-status").split("\n")))
-            print("train page: inspect section", page.locator("#inspect").count(), "| go-to-inspect link", page.locator(".go-inspect").count())
-            page.click(".go-inspect"); page.wait_for_url("**/inspect", timeout=15000); page.wait_for_selector("#object-select")
+            # new product through the Object library's "+ Add new product", which leads to /train with it selected
+            page.goto(f"{URL}/objects", wait_until="networkidle")
+            page.click(".add-product-card")
+            page.fill("#new-product-name", PRODUCT); page.fill("#new-product-sku", "UT-01")
+            page.click(".add-product-submit")
+            page.wait_for_url("**/train", timeout=15000)
+            page.wait_for_function(f"document.querySelector('#train-product-name')?.textContent === {PRODUCT!r}", timeout=15000)
+            import urllib.request, json as _json
+            made = [o for o in _json.load(urllib.request.urlopen("http://localhost:8000/objects")) if o["display_name"] == PRODUCT]
+            print("product created:", made[0]["id"] if made else "-", "| state:", made[0]["state"] if made else "-",
+                  "| train header:", page.inner_text("#train-product-name"), "| old 15-tile grid:", page.locator(".object-grid").count())
+            page.set_input_files("input[aria-label='Choose photos or a zip']", [str(f) for f in train_files])
+            page.wait_for_function("document.querySelectorAll('.train-thumb').length >= 15 && !/checking/.test(document.querySelector('.train-quality-summary')?.textContent || 'checking')", timeout=60000)
+            print("quality:", page.inner_text(".train-quality-summary"), "| step:", page.inner_text(".train-steps li.current"))
+            page.screenshot(path=str(SHOTS / "train_photos.png"), full_page=True)
+            page.click(".train-settings summary"); page.select_option(".train-settings select", "resnet18")
+            page.click(".train-start")
+            page.wait_for_selector(".train-live", timeout=15000)
+            page.screenshot(path=str(SHOTS / "train_running.png"), full_page=True)
+            page.wait_for_selector(".train-live .go-inspect", timeout=180_000)
+            print("trained:", page.inner_text(".train-live h3"), "|", page.inner_text(".train-time").replace("\n", " "))
+            page.click(".train-live .go-inspect"); page.wait_for_url("**/inspect", timeout=15000); page.wait_for_selector("#object-select")
             print("inspect page: train section", page.locator("#train").count(), "| nav:", page.locator(".netrix-topbar nav a").all_inner_texts())
             page.select_option("#object-select", PART)
             for name in ("good", "scratched", "scratched"):
@@ -166,17 +183,17 @@ def main():
             page.wait_for_selector(".verify-card", timeout=10000)
             page.wait_for_timeout(1500)
             n = page.locator(".verify-item").count()
-            mine = page.locator(".verify-item", has_text=PART)
+            mine = page.locator(".verify-item", has_text=PRODUCT)
             print("queue items:", n, "| from this test:", mine.count())
             page.screenshot(path=str(SHOTS / "evaluation.png"))
             if mine.count():  # only touch the test part's own inspections, never real ones
                 mine.first.locator("input").fill("checked by UI test")
                 mine.first.locator(".verify-defect").click()
                 page.wait_for_timeout(1500)
-                print("after confirm:", page.locator(".verify-item", has_text=PART).count(), "of ours left")
+                print("after confirm:", page.locator(".verify-item", has_text=PRODUCT).count(), "of ours left")
             import urllib.request, json as _json
             rid = _json.load(urllib.request.urlopen(f"http://localhost:8000/log?object={PART}&limit=1"))[0]["id"]
-            page.goto(f"{URL}/evaluation?ask={rid}", wait_until="networkidle")
+            page.goto(f"{URL}/evaluation?ask={rid}", wait_until="domcontentloaded")  # it starts asking the AI at once
             page.wait_for_function("document.querySelectorAll('.chat-msg.assistant').length >= 1 && !document.querySelector('.chat-msg .spin')", timeout=150_000)
             print(f"ask={rid}: question:", page.locator(".chat-msg.user").first.inner_text()[:60], "| reply:", page.locator(".chat-msg.assistant").last.inner_text().replace("\n", " ")[:160])
             print("ask answer read aloud:", (page.evaluate("window.__spoken")[-1:] or ["-"])[0][:70])
@@ -215,7 +232,7 @@ def main():
             page.goto(f"{URL}/objects", wait_until="networkidle")
             print("library: add card", page.locator(".add-product-card").count(), "| benchmark section", page.locator("details.benchmark-parts").count(),
                   "| empty note", page.locator(".library-empty").count(), "| products:", page.locator(".product-card h4").all_inner_texts())
-            card = page.locator(".object-status-card", has_text=PART.replace("_", " ").title())  # cards show the display name
+            card = page.locator(".object-status-card", has_text=PRODUCT)  # cards show the display name
             card.wait_for(timeout=10000)
             print("object card:", " | ".join(card.inner_text().split("\n"))[:160])
             slider = card.locator(".strictness input[type=range]")

@@ -117,11 +117,12 @@ export async function checkHealth(): Promise<boolean> {
 
 const trainStarted = new Map<string, number>();
 
-export async function trainObject(objectId: string, files: File[], options: { backbone?: Backbone; rotations?: number } = {}): Promise<{ jobId: string }> {
+export async function trainObject(objectId: string, files: File[], options: { backbone?: Backbone; rotations?: number; mode?: "replace" | "add" } = {}): Promise<{ jobId: string }> {
   const form = new FormData();
   for (const file of files) form.append("files", file, file.name);
   form.append("backbone", options.backbone ?? "auto");
   form.append("rotations", String(options.rotations ?? 1));
+  form.append("mode", options.mode ?? "replace");
   await call(`/objects/${objectId}/train`, { method: "POST", body: form });
   trainStarted.set(objectId, Date.now());
   return { jobId: objectId };
@@ -196,7 +197,7 @@ export async function markGood(objectId: string, file: File, inspectionId: numbe
 
 // ---------- history, report ----------
 
-type RawLogRow = { id: number; ts: number; object: string; label: string; score: number; threshold: number; ms: number; reasons: string; corrected: number };
+type RawLogRow = { id: number; ts: number; object: string; display_name?: string; label: string; score: number; threshold: number; ms: number; reasons: string; corrected: number };
 
 // filters shared by the history table, shift strip, CSV and report links. hours null = all time.
 export type LogFilter = { object?: string | null; hours?: number | null };
@@ -216,7 +217,7 @@ export async function getHistory(object?: string | null): Promise<InspectionReco
     id: `#${String(r.id).padStart(4, "0")}`,
     inspectionId: r.id,
     objectId: r.object,
-    objectName: nameOf(r.object),
+    objectName: r.display_name ?? nameOf(r.object),
     verdict: VERDICT[r.label] ?? "Unsure",
     score: r.score,
     threshold: r.threshold,
@@ -351,7 +352,7 @@ export async function logout() {
   saveSession(null);
 }
 
-export type QueueItem = { id: number; ts: number; object: string; label: string; score: number; threshold: number; ms: number; reasons: string };
+export type QueueItem = { id: number; ts: number; object: string; display_name?: string; label: string; score: number; threshold: number; ms: number; reasons: string };
 export const photoUrl = (id: number) => `${API_URL}/log/${id}/photo.jpg`;
 export const heatmapUrl = (id: number) => `${API_URL}/log/${id}/heatmap.png`;
 
@@ -365,7 +366,7 @@ export async function verifyInspection(id: number, decision: "good" | "defective
 export type Summary = {
   total: number;
   counts: { good: number; defective: number; unsure: number; retake: number };
-  by_object: { object: string; total: number; good: number; defective: number; unsure: number; retake: number }[];
+  by_object: { object: string; display_name?: string; total: number; good: number; defective: number; unsure: number; retake: number }[];
   verification: { pending: number; verified: number; confirmed_defective: number; overturned_to_good: number };
   operator_corrections: number; avg_ms: number; max_ms: number; first: number | null; last: number | null;
 };

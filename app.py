@@ -386,6 +386,23 @@ def product_id(display_name: str) -> str:
     return pid
 
 
+def display_name(pid):
+    """The product's display name (its id title-cased when it has no details file)."""
+    return read_details(pid)["display_name"] if pid and NAME_RE.fullmatch(pid) else pid
+
+
+def with_names(rows):
+    """Log rows with a display_name next to each object id (for pages and the assistant)."""
+    names = {}
+    out = []
+    for r in rows:
+        o = r.get("object")
+        if o not in names:
+            names[o] = display_name(o)
+        out.append({**r, "display_name": names[o]})
+    return out
+
+
 def details_path(pid):
     return MODELS / f"{pid}.json"
 
@@ -653,7 +670,7 @@ def parse_since(hours: float | None):
 def log_list(object: str | None = None, hours: float | None = None, limit: int = 100):
     if object:
         check_name(object)
-    return inspection_log.rows(object, parse_since(hours), max(1, min(limit, 1000)))
+    return with_names(inspection_log.rows(object, parse_since(hours), max(1, min(limit, 1000))))
 
 
 @app.get("/log.csv", response_class=PlainTextResponse)
@@ -689,7 +706,7 @@ def report_page(object: str | None = None, hours: float | None = 12):
     c = r["counts"]
     flagged = "".join(
         f'<figure><img src="/log/{f["id"]}/heatmap.png" alt="heatmap {f["id"]}"><figcaption>#{f["id"]} '
-        f'{html.escape(f["object"])} · {f["label"].upper()} · {f["score"]:.2f}'
+        f'{html.escape(display_name(f["object"]))} · {f["label"].upper()} · {f["score"]:.2f}'
         f'{" · corrected" if f["corrected"] else ""}</figcaption></figure>' for f in r["recent_flagged"])
     page = f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Shift report</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='7' fill='%2324313c'/%3E%3Ccircle cx='8' cy='8' r='3' fill='%23f2c200'/%3E%3C/svg%3E">
@@ -700,7 +717,7 @@ h1{{margin:0}} .muted{{color:#555}} table{{border-collapse:collapse;margin:16px 
 .grid{{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}} figure{{margin:0}} img{{width:100%;border-radius:6px}}
 figcaption{{font-size:12px;color:#444}} @media print{{button{{display:none}}}}</style></head><body>
 <h1>Inspection shift report</h1>
-<p class="muted">Object: <b>{html.escape(r["object"])}</b> · {f"last {hours:g} h" if hours else "all time"} · {when(r["first"])} to {when(r["last"])}</p>
+<p class="muted">Product: <b>{html.escape(display_name(r["object"]) if r["object"] != "all" else "all products")}</b> · {f"last {hours:g} h" if hours else "all time"} · {when(r["first"])} to {when(r["last"])}</p>
 <button onclick="print()">Print / save as PDF</button>
 <table><tr><th>Parts inspected</th><td>{r["total"]}</td></tr>
 <tr><th>Good</th><td>{c["good"]}</td></tr><tr><th>Defective</th><td>{c["defective"]} ({r["defect_rate"]:.1%})</td></tr>
@@ -753,7 +770,7 @@ def auth_logout(authorization: str | None = Header(None)):
 def verify_queue(object: str | None = None, limit: int = 50, who: dict = Depends(can_verify)):
     if object:
         check_name(object)
-    return inspection_log.queue(object, max(1, min(limit, 200)))
+    return with_names(inspection_log.queue(object, max(1, min(limit, 200))))
 
 
 @app.get("/log/{rid}/photo.jpg")
@@ -794,7 +811,9 @@ def verify(rid: int, body: VerifyBody, who: dict = Depends(can_verify)):
 
 @app.get("/summary")
 def summary():
-    return inspection_log.summary()
+    out = inspection_log.summary()
+    out["by_object"] = with_names(out.get("by_object", []))
+    return out
 
 
 @app.get("/assistant/status")
@@ -817,8 +836,11 @@ def assistant_ask(body: AskBody):
     rid = assistant.mentioned_id(msg)
     if rid:
         detail = inspection_log.get(rid)
-    return assistant.ask(msg, body.history, inspection_log.summary(), inspection_log.rows(limit=15), detail,
-                         lang=body.lang)
+    named = lambda r: {**r, "object": display_name(r["object"])}
+    summary = inspection_log.summary()
+    summary["by_object"] = [named(o) for o in summary.get("by_object", [])]
+    return assistant.ask(msg, body.history, summary, [named(r) for r in inspection_log.rows(limit=15)],
+                         named(detail) if detail else None, lang=body.lang)
 
 
 @app.get("/", include_in_schema=False)

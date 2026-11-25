@@ -44,7 +44,7 @@ function VerifyItem({ item, onDone }: { item: QueueItem; onDone: () => void }) {
       <figure><img src={heatmapUrl(item.id)} alt={`Heatmap of check #${item.id}`} /><figcaption>Where it differs</figcaption></figure>
     </div>
     <div className="verify-info">
-      <h3>#{String(item.id).padStart(4, "0")} · {partName(item.object)}</h3>
+      <h3>#{String(item.id).padStart(4, "0")} · {item.display_name ?? partName(item.object)}</h3>
       <p>Model said <b className={`tag-${item.label}`}>{item.label === "unsure" ? "Unsure" : "Defective"}</b> · score {item.score.toFixed(2)} against a line of {item.threshold.toFixed(2)} · {new Date(item.ts * 1000).toLocaleTimeString([], { hour12: false })}</p>
       <label htmlFor={`note-${item.id}`} className="sr-only">Note</label>
       <input id={`note-${item.id}`} type="text" placeholder="Note (optional), e.g. crack on the rim" value={note} maxLength={500} onChange={(e) => setNote(e.target.value)} />
@@ -160,7 +160,7 @@ export function SummaryView() {
     <div className="summary-grid">
       <section className="netrix-card"><h2>By part</h2>
         {!s.by_object.length ? <p className="netrix-muted">No inspections yet.</p> : <table className="summary-table"><thead><tr><th>Part</th><th>Total</th><th>Result mix</th><th>Defective</th></tr></thead><tbody>
-          {s.by_object.map((o) => <tr key={o.object}><td>{partName(o.object)}</td><td>{o.total}</td><td><div className="mix-bar" role="img" aria-label={`${o.good} good, ${o.defective} defective, ${o.unsure} unsure, ${o.retake} retakes`}>{(["good", "defective", "unsure", "retake"] as const).map((k) => o[k] ? <span key={k} className={`mix-${k}`} style={{ width: `${(o[k] / o.total) * 100}%` }} /> : null)}</div></td><td>{o.defective} ({((o.defective / o.total) * 100).toFixed(0)}%)</td></tr>)}
+          {s.by_object.map((o) => <tr key={o.object}><td>{o.display_name ?? partName(o.object)}</td><td>{o.total}</td><td><div className="mix-bar" role="img" aria-label={`${o.good} good, ${o.defective} defective, ${o.unsure} unsure, ${o.retake} retakes`}>{(["good", "defective", "unsure", "retake"] as const).map((k) => o[k] ? <span key={k} className={`mix-${k}`} style={{ width: `${(o[k] / o.total) * 100}%` }} /> : null)}</div></td><td>{o.defective} ({((o.defective / o.total) * 100).toFixed(0)}%)</td></tr>)}
         </tbody></table>}
         <p className="mix-legend"><span className="mix-good" /> good <span className="mix-defective" /> defective <span className="mix-unsure" /> unsure <span className="mix-retake" /> retake</p>
       </section>
