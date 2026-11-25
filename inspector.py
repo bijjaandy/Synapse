@@ -122,9 +122,11 @@ def fake_defect(img, rng, subtle=False):
 # ---------- model ----------
 
 def photo_stats(img):
-    """Brightness (mean grey, 0-1) and sharpness (variance of the Laplacian) of an HxWx3 [0,1] image."""
+    """Brightness (mean grey, 0-1) and sharpness (variance of the Laplacian) of an HxWx3 [0,1] image.
+    Sharpness is measured on grey / its mean so a darker photo doesn't look blurrier."""
     grey = img.mean(-1)
-    return float(grey.mean()), float(laplace(grey).var())
+    bright = float(grey.mean())
+    return bright, float(laplace(grey / max(bright, 1e-3)).var())
 
 
 def rotated_copies(img, n):
