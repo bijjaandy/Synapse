@@ -117,6 +117,16 @@ class InspectionLog:
         with self._conn() as c:
             return [dict(r) for r in c.execute(q, args)]
 
+    def delete_object(self, obj):
+        """Delete every log row of one part, with its heatmaps and photos. Returns how many rows went."""
+        with self._conn() as c:
+            ids = [r[0] for r in c.execute("SELECT id FROM inspections WHERE object=?", (obj,))]
+            c.execute("DELETE FROM inspections WHERE object=?", (obj,))
+        for rid in ids:
+            (self.heatmaps / f"{rid}.png").unlink(missing_ok=True)
+            (self.photos / f"{rid}.jpg").unlink(missing_ok=True)
+        return len(ids)
+
     def heatmap_path(self, rid):
         p = self.heatmaps / f"{int(rid)}.png"
         return p if p.exists() else None

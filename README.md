@@ -13,6 +13,11 @@ Learns from photos of good parts only. Never sees a real defect, even to set the
     python test_inspector.py                 # ML self-check, should print SELF-TEST PASSED
     pytest -q                                # API tests + feature tests (rotation, retake, pins, auto model)
 
+A `.venv` keeps the project's packages separate, but it isn't required: the system Python works too (tested on
+Python 3.13). Whichever you use, start the backend and run the tests with that same Python.
+Parts trained before the blur-check fix show "Retrain recommended" in the Object library; their blur check stays
+off until you retrain them with the same photos.
+
 ## Netrix IQ app (pages, logins, local AI)
 
 | Page | Who can open it | What happens there |
@@ -35,7 +40,7 @@ ollama pull qwen2.5:1.5b
 Keep Ollama running (it starts in the tray on Windows). Use another model with `set NETRIX_LLM=llama3.2:3b` before starting the backend.
 Without Ollama the assistant still answers counts and how-it-works questions from the log ("offline answer").
 
-New endpoints: `POST /auth/login`, `GET /auth/me`, `POST /auth/logout`, `GET /verify/queue`, `POST /verify/{id}`
+New endpoints: `DELETE /objects/{name}` (QC inspector or supervisor; `?purge_log=true` also deletes its history), `POST /auth/login`, `GET /auth/me`, `POST /auth/logout`, `GET /verify/queue`, `POST /verify/{id}`
 (`good` also teaches the model), `GET /log/{id}/photo.jpg`, `GET /summary`, `GET /assistant/status`, `POST /assistant`.
 
 Browser test of all pages: start both servers, then `python netrix_ui_test.py --cleanup` (screenshots in `netrix_shots/`).

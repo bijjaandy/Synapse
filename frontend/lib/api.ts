@@ -50,6 +50,7 @@ export type ObjectTrainingStatus = {
   goodImageCount: number | null;
   lastTrainedAt: string | null;
   backbone: string | null;
+  needsRetrain?: boolean;   // saved before the current blur check: retrain to turn it back on
 };
 
 export type EvaluationResult = {
@@ -123,7 +124,7 @@ export async function trainObject(objectId: string, files: File[], options: { ba
 }
 
 type RawStatus = { state: string; started?: number; train_s?: number; log?: string[]; backbone?: string; error?: string;
-                   auto_report?: AutoEstimate[]; n_images?: number | null; trained_at?: number };
+                   auto_report?: AutoEstimate[]; n_images?: number | null; trained_at?: number; needs_retrain?: boolean };
 
 export async function getTrainStatus(jobId: string): Promise<TrainStatus> {
   const s = await call<RawStatus>(`/objects/${jobId}/status`);
@@ -194,7 +195,7 @@ type RawLogRow = { id: number; ts: number; object: string; label: string; score:
 
 // filters shared by the history table, shift strip, CSV and report links. hours null = all time.
 export type LogFilter = { object?: string | null; hours?: number | null };
-const ALL_TIME_HOURS = 8760;  // the backend's maximum; /report.html falls back to 12 h when hours is left out
+const ALL_TIME_HOURS = 0;  // the backend reads hours=0 as all time (/report.html falls back to 12 h when hours is left out)
 
 function query(filter: LogFilter, extra: Record<string, string> = {}) {
   const q = new URLSearchParams(extra);
@@ -249,7 +250,7 @@ export async function getObjectStatuses(): Promise<ObjectTrainingStatus[]> {
       const status = s.state === "ready" ? "Trained" : s.state === "failed" ? "Failed" : "Training";
       return { ...base, status: status as ObjectTrainingStatus["status"], goodImageCount: s.n_images ?? null,
                lastTrainedAt: s.trained_at ? new Date(s.trained_at * 1000).toISOString() : null,
-               backbone: s.backbone && s.backbone !== "auto" ? s.backbone : null };
+               backbone: s.backbone && s.backbone !== "auto" ? s.backbone : null, needsRetrain: !!s.needs_retrain };
     } catch {
       return { ...base, status: "Trained" as const };
     }
@@ -349,4 +350,10 @@ export async function assistantStatus(): Promise<{ ollama: boolean; model: strin
 export async function askAssistant(message: string, history: ChatMessage[]): Promise<{ answer: string; source: string; model: string | null; ms: number }> {
   return call("/assistant", { method: "POST", headers: { "Content-Type": "application/json" },
                               body: JSON.stringify({ message, history: history.map(({ role, content }) => ({ role, content })) }) });
+}
+
+/** Remove a part (model + training photos). QC inspectors and supervisors only. purgeLog also deletes its history. */
+export async function deleteObject(name: string, purgeLog = false) {
+  return call<{ deleted: string; log_rows_removed: number }>(`/objects/${encodeURIComponent(name)}?purge_log=${purgeLog}`,
+    { method: "DELETE", headers: authHeaders() });
 }

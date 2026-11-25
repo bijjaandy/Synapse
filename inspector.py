@@ -121,6 +121,9 @@ def fake_defect(img, rng, subtle=False):
 
 # ---------- model ----------
 
+QUALITY_VERSION = 2  # 2 = sharpness measured on grey / its mean (bd60ed0). Older saved stats can't be compared.
+
+
 def photo_stats(img):
     """Brightness (mean grey, 0-1) and sharpness (variance of the Laplacian) of an HxWx3 [0,1] image.
     Sharpness is measured on grey / its mean so a darker photo doesn't look blurrier."""
@@ -245,7 +248,8 @@ class Inspector:
 
     def _set_quality(self, imgs):
         stats = np.array([photo_stats(im) for im in imgs])
-        self.quality = {"bright": [float(stats[:, 0].min()), float(stats[:, 0].max())], "sharp_min": float(stats[:, 1].min())}
+        self.quality = {"bright": [float(stats[:, 0].min()), float(stats[:, 0].max())], "sharp_min": float(stats[:, 1].min()),
+                        "version": QUALITY_VERSION}
 
     def _calibrate(self, good):
         self.thr = float(np.quantile(good, self.q))
@@ -270,7 +274,7 @@ class Inspector:
                 reasons.append("too dark compared with the training photos")
             elif bright > hi + 0.15:
                 reasons.append("too bright compared with the training photos")
-            if sharp < 0.4 * self.quality["sharp_min"]:
+            if self.quality.get("version") == QUALITY_VERSION and sharp < 0.4 * self.quality["sharp_min"]:
                 reasons.append("blurry or out of focus")
         if (patches >= self.thr).mean() > self.RETAKE_FRAC:
             reasons.append("most of the photo looks different: wrong object, angle, background or lighting?")
@@ -319,6 +323,11 @@ class Inspector:
         m.quality = d.get("quality")  # older models have no photo-quality stats; that check is then skipped
         return m
 
+    @property
+    def needs_retrain(self):
+        """True for models saved before the current blur check: their blur check is off until retrained."""
+        return bool(self.quality) and self.quality.get("version") != QUALITY_VERSION
+
 
 def choose_backbone(n_images, rotations=1, coreset_ratio=0.01, train_budget=600, ms_budget=1000, safety=0.5,
                     get_fx=FeatureExtractor, log=print):
@@ -344,9 +353,10 @@ def choose_backbone(n_images, rotations=1, coreset_ratio=0.01, train_budget=600,
         ok = est_train <= safety * train_budget and est_ms <= safety * ms_budget
         report.append({"backbone": name, "est_train_s": round(est_train, 1), "est_ms": round(est_ms), "fits": ok})
         log(f"{name}: estimated training {est_train:.0f}s, {est_ms:.0f} ms/photo -> {'fits' if ok else 'too slow'}")
-        if ok:
-            return name, report
-    return "resnet18", report  # nothing fits with margin: fall back to the fastest
+    # every backbone is timed so the report can show the comparison; the most accurate one that fits wins
+    chosen = next((r["backbone"] for r in report if r["fits"]), "resnet18")  # nothing fits: the fastest
+    log(f"chosen: {chosen}")
+    return chosen, report
 
 
 def overlay(img_path, amap, out_path, vmax=None):  # paths or file-like objects

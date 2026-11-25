@@ -48,7 +48,17 @@ def make_photos(root):
     return sorted(train.glob("*.png")), good, bad
 
 
-def cleanup():
+def cleanup(api="http://localhost:8000"):
+    # through the running backend first, so it also forgets the part (no restart needed)
+    try:
+        import json, urllib.request
+        req = urllib.request.Request(f"{api}/auth/login", data=json.dumps({"username": "supervisor", "password": "supervisor123"}).encode(),
+                                     headers={"Content-Type": "application/json"})
+        token = json.loads(urllib.request.urlopen(req, timeout=5).read())["token"]
+        req = urllib.request.Request(f"{api}/objects/{PART}?purge_log=true", method="DELETE", headers={"Authorization": f"Bearer {token}"})
+        print("cleanup via backend:", urllib.request.urlopen(req, timeout=10).read().decode())
+    except Exception as e:  # server down, demo password changed, or the part is already gone: fall back to files
+        print(f"cleanup via backend skipped ({e}); removing files directly")
     shutil.rmtree(HERE / "models" / PART, ignore_errors=True)
     for f in (HERE / "models").glob(f"{PART}.*"):
         f.unlink()

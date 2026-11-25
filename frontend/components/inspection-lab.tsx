@@ -148,7 +148,7 @@ function HeroStack({ scrollProgress }: { scrollProgress: MotionValue<number> }) 
     <div className="stack-stage">
       <motion.div className="stack-assembly" style={{ rotateX: reducedMotion ? 0 : rotateX, rotateY: reducedMotion ? 0 : mouseTiltY }}>
         {layers.map((layer, index) => <ExplodedLayer key={layer.type} layer={layer} index={index} scrollProgress={reducedMotion ? reducedExpansion : expansion} pointerX={springX} pointerY={springY} active={active} hovered={hovered} reducedMotion={reducedMotion} onHover={selectLayer} onLeave={() => setHovered(null)} />)}
-        <svg className="connectors" viewBox="0 0 440 380" aria-hidden="true"><motion.path d="M74 58 L74 315 M366 58 L366 315" pathLength={1} style={{ pathLength: reducedMotion ? 1 : connectorProgress }} /></svg>
+        <svg className="connectors" viewBox="0 0 440 380" aria-hidden="true"><motion.path d="M74 58 L74 315 M366 58 L366 315" pathLength={1} style={reducedMotion ? undefined : { pathLength: connectorProgress }} /></svg>
       </motion.div>
       <div className="ruler ruler-left"><span>0</span><i /><i /><i /><i /><span>10 mm</span></div>
     </div>
@@ -468,7 +468,7 @@ export default function InspectionLab({ view: page }: { view?: LabView } = {}) {
       {!page && <div className="tools-tabs" role="tablist" aria-label={pageCopy.toolsTablistLabel}><button id="evaluation-tab" type="button" role="tab" aria-selected={toolsTab === "evaluation"} aria-controls="evaluation-panel" tabIndex={toolsTab === "evaluation" ? 0 : -1} onClick={() => setToolsTab("evaluation")} onKeyDown={(event) => { if (event.key === "ArrowRight" || event.key === "ArrowLeft") { event.preventDefault(); setToolsTab("objects"); document.getElementById("objects-tab")?.focus(); } }}>{pageCopy.evaluationTab}</button><button id="objects-tab" type="button" role="tab" aria-selected={toolsTab === "objects"} aria-controls="objects-panel" tabIndex={toolsTab === "objects" ? 0 : -1} onClick={() => setToolsTab("objects")} onKeyDown={(event) => { if (event.key === "ArrowRight" || event.key === "ArrowLeft") { event.preventDefault(); setToolsTab("evaluation"); document.getElementById("evaluation-tab")?.focus(); } }}>{pageCopy.objectsTab}</button></div>}
       {page === "evaluation" && <label className="select-label eval-object" htmlFor="eval-object"><Eyebrow>{pageCopy.objectSelectLabel}</Eyebrow><div className="select-wrap"><select id="eval-object" value={selectedObject} onChange={(event) => setSelectedObject(event.target.value)}>{objectStatuses.filter((s) => s.status === "Trained").map((s) => <option key={s.objectId} value={s.objectId}>{s.objectName}</option>)}{!objectStatuses.some((s) => s.objectId === selectedObject && s.status === "Trained") && <option value={selectedObject}>{currentObject.name} (not trained)</option>}</select><ChevronDown size={15} /></div></label>}
       <EvaluationPanel objectId={selectedObject} objectName={currentObject.name} active={toolsTab === "evaluation"} />
-      <ObjectLibraryPanel statuses={objectStatuses} loading={objectStatusesLoading} error={objectStatusError} active={toolsTab === "objects"} />
+      <ObjectLibraryPanel statuses={objectStatuses} loading={objectStatusesLoading} error={objectStatusError} active={toolsTab === "objects"} onChanged={() => mutateObjectStatuses()} />
     </section>
     </>}
     {show("history") && <>

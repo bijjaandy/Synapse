@@ -1,8 +1,8 @@
 "use client";
 
-import { useRef, useState, type InputHTMLAttributes } from "react";
-import { AlertCircle, Check, Clock3, FolderOpen, LoaderCircle, Upload, Wifi, WifiOff } from "lucide-react";
-import { evaluateTestSet, type EvaluationResult, type ObjectTrainingStatus } from "@/lib/api";
+import { useEffect, useRef, useState, type InputHTMLAttributes } from "react";
+import { AlertCircle, Check, Clock3, FolderOpen, LoaderCircle, RefreshCw, Trash2, Upload, Wifi, WifiOff } from "lucide-react";
+import { deleteObject, evaluateTestSet, loadSession, type EvaluationResult, type ObjectTrainingStatus } from "@/lib/api";
 import { evaluationCopy, limitationCopy, limitationTitle, limitationsEyebrow, measuredLabel, objectCategories, objectViewCopy, projectTargets, projectTargetsLabel, runtimeIndicatorLabel, runtimeOfflineLabel, runtimeOnlineLabel, runtimeStatusCopy, runtimeTargetCopy, runtimeTargetLabel, sampleDataLabel } from "@/config/content";
 
 const mono = "font-mono";
@@ -53,12 +53,32 @@ export function EvaluationPanel({ objectId, objectName, active }: { objectId: st
   </div>;
 }
 
-export function ObjectLibraryPanel({ statuses, loading, error, active }: { statuses: ObjectTrainingStatus[]; loading: boolean; error?: Error; active: boolean }) {
+/** Two-step remove (no browser dialog): first click asks, second click removes. */
+function RemovePart({ id, name, onRemoved }: { id: string; name: string; onRemoved?: () => void }) {
+  const [step, setStep] = useState<"idle" | "ask" | "busy">("idle");
+  const [err, setErr] = useState<string | null>(null);
+  const go = async () => {
+    setStep("busy"); setErr(null);
+    try { await deleteObject(id); onRemoved?.(); setStep("idle"); }
+    catch (e) { setErr(e instanceof Error ? e.message : String(e)); setStep("ask"); }
+  };
+  return <div className="remove-part">
+    {step === "idle" ? <button type="button" className="remove-part-btn" onClick={() => setStep("ask")}><Trash2 size={12} /> Remove part</button>
+      : <span className="remove-part-ask">Remove {name}? History stays.
+          <button type="button" className="remove-part-yes" disabled={step === "busy"} onClick={go}>{step === "busy" ? "Removing…" : "Remove"}</button>
+          <button type="button" className="remove-part-no" disabled={step === "busy"} onClick={() => setStep("idle")}>Keep</button></span>}
+    {err && <small className="remove-part-err">{err}</small>}
+  </div>;
+}
+
+export function ObjectLibraryPanel({ statuses, loading, error, active, onChanged }: { statuses: ObjectTrainingStatus[]; loading: boolean; error?: Error; active: boolean; onChanged?: () => void }) {
+  const [canRemove, setCanRemove] = useState(false);
+  useEffect(() => { const s = loadSession(); setCanRemove(!!s && (s.role === "inspector" || s.role === "supervisor")); }, []);
   return <div className="object-library-panel" role="tabpanel" id="objects-panel" aria-labelledby="objects-tab" hidden={!active}>
     <div className="panel-intro"><div><h3>{objectViewCopy.title}</h3><p>{objectViewCopy.description}</p></div><span className="sample-badge">{objectViewCopy.sampleBadge}</span></div>
     {loading ? <div className="object-status-grid" aria-label="Loading object status">{objectCategories.map((item) => <div className="object-status-card status-skeleton" key={item.id}><span /><span /><span /></div>)}</div> : error ? <div className="evaluation-state error-state" role="alert"><AlertCircle size={17} /><p>{objectViewCopy.error}</p></div> : statuses.length === 0 ? <div className="evaluation-empty"><p>{objectViewCopy.empty}</p></div> : <div className="object-status-grid">{statuses.map((status) => {
       const category = objectCategories.find((item) => item.id === status.objectId);
-      return <article className="object-status-card" key={status.objectId}><div className="object-status-head"><span className={`${mono} object-code`}>{category?.code ?? "CUS"}</span>{status.backbone && <span className={`${mono} object-code`}>{status.backbone}</span>}</div><h4>{status.objectName}</h4><span className={`object-status-badge ${status.status === "Trained" ? "trained" : "not-trained"}`}>{status.status}</span><p>{status.status === "Trained" ? (status.goodImageCount != null ? objectViewCopy.trainedImages(status.goodImageCount) : objectViewCopy.imageCountUnavailable) : status.status === "Not trained" ? objectViewCopy.untrainedImages : status.status}</p><small className={mono}>{objectViewCopy.lastTrained} · {status.lastTrainedAt ? new Date(status.lastTrainedAt).toLocaleString() : "—"}</small></article>;
+      return <article className="object-status-card" key={status.objectId}><div className="object-status-head"><span className={`${mono} object-code`}>{category?.code ?? "CUS"}</span>{status.backbone && <span className={`${mono} object-code`}>{status.backbone}</span>}</div><h4>{status.objectName}</h4><span className={`object-status-badge ${status.status === "Trained" ? "trained" : "not-trained"}`}>{status.status}</span><p>{status.status === "Trained" ? (status.goodImageCount != null ? objectViewCopy.trainedImages(status.goodImageCount) : objectViewCopy.imageCountUnavailable) : status.status === "Not trained" ? objectViewCopy.untrainedImages : status.status}</p><small className={mono}>{objectViewCopy.lastTrained} · {status.lastTrainedAt ? new Date(status.lastTrainedAt).toLocaleString() : "—"}</small>{status.needsRetrain && <span className="retrain-badge" title="Trained before the current blur check. Retrain with the same photos to turn it back on."><RefreshCw size={11} /> Retrain recommended: blur check is off</span>}{canRemove && status.status !== "Not trained" && status.status !== "Training" && <RemovePart id={status.objectId} name={status.objectName} onRemoved={onChanged} />}</article>;
     })}</div>}
     <p className="object-state-note">{objectViewCopy.demoNote}</p>
   </div>;

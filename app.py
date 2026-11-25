@@ -3,6 +3,7 @@
 Run:  uvicorn app:app --port 8000      Docs: http://localhost:8000/docs
 """
 import base64
+import shutil
 import html
 import io
 import re
@@ -23,7 +24,7 @@ from PIL import Image
 import assistant
 from auth import ROLES, UserStore, bearer, require_role
 from inspection_log import InspectionLog
-from inspector import BACKBONES, WEIGHTS_DIR, FeatureExtractor, Inspector, SampleMeter, choose_backbone, list_images, overlay
+from inspector import QUALITY_VERSION, BACKBONES, WEIGHTS_DIR, FeatureExtractor, Inspector, SampleMeter, choose_backbone, list_images, overlay
 
 ROOT = Path(__file__).parent
 DATA, MODELS = ROOT / "data", ROOT / "models"
@@ -103,6 +104,11 @@ def get_fx(backbone):
 
 def saved_backbone(path):
     return torch.load(path).get("backbone", "resnet18")  # models saved before this field were resnet18
+
+
+def saved_needs_retrain(path):
+    q = torch.load(path).get("quality")
+    return bool(q) and q.get("version") != QUALITY_VERSION
 
 
 def get_model(name):
@@ -196,8 +202,28 @@ def status(name: str):
         good = DATA / name / "good"
         return {"name": name, "state": "ready", "backbone": m.fx.name if m else saved_backbone(path),
                 "n_images": len(list(good.glob("*.png"))) if good.exists() else None,
-                "trained_at": path.stat().st_mtime}
+                "trained_at": path.stat().st_mtime,
+                "needs_retrain": m.needs_retrain if m else saved_needs_retrain(path)}
     raise HTTPException(404, f"unknown object '{name}'")
+
+
+@app.delete("/objects/{name}")
+def delete_object(name: str, purge_log: bool = False, who: dict = Depends(can_verify)):
+    """Remove a part: its model, training photos and the copy in memory. QC inspectors and supervisors only.
+    `purge_log=true` also deletes its inspection log rows, heatmaps and photos (otherwise history keeps them)."""
+    check_name(name)
+    if jobs.get(name, {}).get("state") in ("queued", "training"):
+        raise HTTPException(409, f"'{name}' is training; wait for it to finish")
+    path = MODELS / f"{name}.pt"
+    if not path.exists() and name not in jobs and not (DATA / name).exists():
+        raise HTTPException(404, f"unknown object '{name}'")
+    with state_lock:
+        models.pop(name, None)
+        jobs.pop(name, None)
+    path.unlink(missing_ok=True)
+    shutil.rmtree(DATA / name, ignore_errors=True)
+    removed = inspection_log.delete_object(name) if purge_log else 0
+    return {"deleted": name, "log_rows_removed": removed, "by": who["username"]}
 
 
 @app.post("/objects/{name}/predict")
@@ -284,10 +310,11 @@ def meter_end(sid: str):
 # ---------- inspection log and shift report ----------
 
 def parse_since(hours: float | None):
-    if hours is None:
+    """None or 0 = all time; otherwise the last `hours` hours (up to a year)."""
+    if not hours:
         return None
     if not 0 < hours <= 24 * 365:
-        raise HTTPException(400, "hours must be between 0 and 8760")
+        raise HTTPException(400, "hours must be between 0 (all time) and 8760")
     return time.time() - hours * 3600
 
 
@@ -342,7 +369,7 @@ h1{{margin:0}} .muted{{color:#555}} table{{border-collapse:collapse;margin:16px 
 .grid{{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}} figure{{margin:0}} img{{width:100%;border-radius:6px}}
 figcaption{{font-size:12px;color:#444}} @media print{{button{{display:none}}}}</style></head><body>
 <h1>Inspection shift report</h1>
-<p class="muted">Object: <b>{html.escape(r["object"])}</b> · last {hours:g} h · {when(r["first"])} to {when(r["last"])}</p>
+<p class="muted">Object: <b>{html.escape(r["object"])}</b> · {f"last {hours:g} h" if hours else "all time"} · {when(r["first"])} to {when(r["last"])}</p>
 <button onclick="print()">Print / save as PDF</button>
 <table><tr><th>Parts inspected</th><td>{r["total"]}</td></tr>
 <tr><th>Good</th><td>{c["good"]}</td></tr><tr><th>Defective</th><td>{c["defective"]} ({r["defect_rate"]:.1%})</td></tr>

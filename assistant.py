@@ -7,9 +7,12 @@ import time
 import urllib.error
 import urllib.request
 
-OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434").rstrip("/")
+# 127.0.0.1, not "localhost": on Windows a refused connection to localhost is retried (~2 s per address)
+OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434").rstrip("/")
 MODEL = os.environ.get("NETRIX_LLM", "qwen2.5:1.5b")
 TIMEOUT_S = 120
+DOWN_RECHECK_S = 30   # after Ollama is found not running, answer offline straight away for this long
+_down = ("", 0.0)  # (url, until): Ollama at this url was found not running
 
 ABOUT = """Netrix IQ is an offline visual inspection system (SYNAPSE 2.0, problem statement 12).
 It learns what a good part looks like from photos of good parts only, then flags anything different.
@@ -37,10 +40,12 @@ def _post(path, payload, timeout):
 
 
 def status():
+    global _down
     try:
         with urllib.request.urlopen(f"{OLLAMA_URL}/api/tags", timeout=2) as r:
             models = [m["name"] for m in json.loads(r.read()).get("models", [])]
         installed = MODEL in models or (":" not in MODEL and any(m.startswith(MODEL + ":") for m in models))
+        _down = ("", 0.0)  # it's up: the next question goes to Ollama
         return {"ollama": True, "model": MODEL, "model_installed": installed, "models": models}
     except (urllib.error.URLError, OSError, ValueError):
         return {"ollama": False, "model": MODEL, "model_installed": False, "models": []}
@@ -82,7 +87,12 @@ def ask(message, history, summary, recent, detail=None):
         if h.get("role") in ("user", "assistant") and isinstance(h.get("content"), str):
             messages.append({"role": h["role"], "content": h["content"][:2000]})
     messages.append({"role": "user", "content": message[:2000]})
+    global _down
     t0 = time.perf_counter()
+    offline_note = " (Start Ollama to get full answers.)"
+    if _down[0] == OLLAMA_URL and time.monotonic() < _down[1]:  # known to be off: don't wait for another refused connection
+        return {"answer": fallback(message, summary) + offline_note, "source": "offline-fallback", "model": None,
+                "ms": round((time.perf_counter() - t0) * 1000)}
     try:
         r = _post("/api/chat", {"model": MODEL, "messages": messages, "stream": False,
                                 "options": {"temperature": 0.2, "num_ctx": 4096}}, TIMEOUT_S)
@@ -92,8 +102,10 @@ def ask(message, history, summary, recent, detail=None):
         note = f" (Ollama says: model '{MODEL}' isn't installed; run: ollama pull {MODEL})" if e.code == 404 else ""
         return {"answer": fallback(message, summary) + note, "source": "offline-fallback", "model": None,
                 "ms": round((time.perf_counter() - t0) * 1000)}
-    except (urllib.error.URLError, OSError, ValueError, TimeoutError):
-        return {"answer": fallback(message, summary) + " (Start Ollama to get full answers.)",
+    except (urllib.error.URLError, OSError, ValueError, TimeoutError) as e:
+        if not isinstance(getattr(e, "reason", e), TimeoutError) and not isinstance(e, TimeoutError):
+            _down = (OLLAMA_URL, time.monotonic() + DOWN_RECHECK_S)  # refused / unreachable, not just slow
+        return {"answer": fallback(message, summary) + offline_note,
                 "source": "offline-fallback", "model": None, "ms": round((time.perf_counter() - t0) * 1000)}
 
 

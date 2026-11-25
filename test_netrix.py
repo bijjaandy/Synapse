@@ -109,3 +109,35 @@ def test_assistant_with_and_without_ollama(netrix, monkeypatch):
     assert sent["messages"][-1]["content"] == "Why was #3 flagged?"
     srv.shutdown()
     assert c.post("/assistant", json={"message": "  "}).status_code == 400
+
+
+def test_delete_part_and_all_time(netrix):
+    c = netrix
+    train_toy(c, "gone1")
+    c.post("/objects/gone1/predict", files={"file": ("g.png", png(part(np.random.default_rng(3))[0]))})
+    op, _ = login(c, "operator", "operator123")
+    sup, _ = login(c, "supervisor", "supervisor123")
+    assert c.delete("/objects/gone1").status_code == 401
+    assert c.delete("/objects/gone1", headers=op).status_code == 403
+    assert c.get("/log", params={"hours": 0}).json()            # hours=0 = all time
+    assert c.get("/report.html", params={"hours": 0}).status_code == 200
+    r = c.delete("/objects/gone1", params={"purge_log": True}, headers=sup)
+    assert r.status_code == 200 and r.json()["log_rows_removed"] == 1, r.text
+    assert "gone1" not in [o["name"] for o in c.get("/objects").json()]   # gone from memory too
+    assert c.post("/objects/gone1/predict", files={"file": ("g.png", png(part(np.random.default_rng(3))[0]))}).status_code == 404
+    assert c.delete("/objects/gone1", headers=sup).status_code == 404
+
+
+def test_old_models_flagged_for_retrain(netrix, monkeypatch):
+    import torch
+    c = netrix
+    train_toy(c, "old1")
+    path = server.MODELS / "old1.pt"
+    d = torch.load(path)
+    d["quality"].pop("version")            # what a model saved before the blur-check fix looks like
+    torch.save(d, path)
+    server.models.clear(); server.jobs.clear()
+    s = c.get("/objects/old1/status").json()
+    assert s["needs_retrain"] is True
+    m = server.get_model("old1")
+    assert m.needs_retrain and not any("blurry" in r for r in m.photo_problems(np.zeros((224, 224, 3), np.float32) + 0.5, np.zeros(10)))
