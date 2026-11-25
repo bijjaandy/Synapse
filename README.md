@@ -1,4 +1,6 @@
-# Good-Parts Inspector (SYNAPSE 2.0, PS #12)
+# Netrix IQ: Learn from perfection. Detect the rest.
+
+Good-Parts Inspector for SYNAPSE 2.0, PS #12.
 
 Learns from photos of good parts only. Never sees a real defect, even to set the threshold.
 
@@ -10,6 +12,33 @@ Learns from photos of good parts only. Never sees a real defect, even to set the
     python download_weights.py resnet18 wide_resnet50   # saves weights/<backbone>.pth; after this no internet is needed
     python test_inspector.py                 # ML self-check, should print SELF-TEST PASSED
     pytest -q                                # API tests + feature tests (rotation, retake, pins, auto model)
+
+## Netrix IQ app (pages, logins, local AI)
+
+| Page | Who can open it | What happens there |
+|---|---|---|
+| `/` landing | everyone | Scroll-driven 3D walk through the pipeline (photo → patches → memory → compare → decide), how it works, who it's for, measured numbers |
+| `/login` | everyone | Who uses it and why; one-click demo logins |
+| `/dashboard` | Operator, QC Inspector, Supervisor | Train a part (upload or webcam) and inspect parts |
+| `/evaluation` | QC Inspector, Supervisor | Human verification queue, the local AI assistant, and folder evaluation |
+| `/objects` | everyone signed in | Object library: every part and its model |
+| `/history` | everyone signed in | Inspection log, filters, CSV and shift report |
+| `/summary` | Supervisor | Total evaluated, results per part, people-in-the-loop numbers, speed |
+
+Demo logins (created on first start in `users.json`, which is git-ignored; passwords are stored salted with PBKDF2):
+`operator / operator123`, `inspector / inspector123`, `supervisor / supervisor123`.
+
+**Local AI assistant (Ollama, offline).** Install Ollama from https://ollama.com while online, then:
+```
+ollama pull qwen2.5:1.5b
+```
+Keep Ollama running (it starts in the tray on Windows). Use another model with `set NETRIX_LLM=llama3.2:3b` before starting the backend.
+Without Ollama the assistant still answers counts and how-it-works questions from the log ("offline answer").
+
+New endpoints: `POST /auth/login`, `GET /auth/me`, `POST /auth/logout`, `GET /verify/queue`, `POST /verify/{id}`
+(`good` also teaches the model), `GET /log/{id}/photo.jpg`, `GET /summary`, `GET /assistant/status`, `POST /assistant`.
+
+Browser test of all pages: start both servers, then `python netrix_ui_test.py --cleanup` (screenshots in `netrix_shots/`).
 
 ## Main UI: the Sightline frontend (Next.js, in `frontend/`)
 The designed UI talks to the same FastAPI backend. Two terminals:

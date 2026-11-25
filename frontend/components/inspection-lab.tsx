@@ -220,11 +220,18 @@ function SectionHeading({ index, title, description, dark = false }: { index: st
   </div>;
 }
 
-export default function InspectionLab() {
+export type LabView = "dashboard" | "evaluation" | "objects" | "history" | "summary";
+const VIEW_SECTIONS: Record<LabView, string[]> = {
+  dashboard: ["train", "inspect"], evaluation: ["tools"], objects: ["tools"], history: ["history"], summary: ["spec"],
+};
+
+/** Without `view`: the original single long page. With `view`: only that page's sections, inside the Netrix IQ app shell. */
+export default function InspectionLab({ view: page }: { view?: LabView } = {}) {
+  const show = (section: string) => !page || VIEW_SECTIONS[page].includes(section);
   const [dark, setDark] = useState(false);
   const [online, setOnline] = useState(true);
   const [activeSection, setActiveSection] = useState("top");
-  const [toolsTab, setToolsTab] = useState<"evaluation" | "objects">("evaluation");
+  const [toolsTab, setToolsTab] = useState<"evaluation" | "objects">(page === "objects" ? "objects" : "evaluation");
   useEffect(() => { const update = () => setOnline(navigator.onLine); update(); window.addEventListener("online", update); window.addEventListener("offline", update); return () => { window.removeEventListener("online", update); window.removeEventListener("offline", update); }; }, []);
   useEffect(() => {
     const sectionIds = [...new Set(navItems.map((item) => item.section))];
@@ -244,7 +251,9 @@ export default function InspectionLab() {
   const methodProgress = useSectionProgress(methodRef);
   const [activeStep, setActiveStep] = useState(0);
   useMotionValueEvent(methodProgress, "change", (progress) => setActiveStep(Math.min(3, Math.floor(progress * 4))));
-  const [selectedObject, setSelectedObject] = useState<string>("bottle");
+  const [selectedObject, setSelectedObjectState] = useState<string>("bottle");
+  useEffect(() => { try { const saved = window.localStorage.getItem("netrix.part"); if (saved) setSelectedObjectState(saved); } catch { /* ignore */ } }, []);
+  const setSelectedObject = (id: string) => { setSelectedObjectState(id); try { window.localStorage.setItem("netrix.part", id); } catch { /* ignore */ } };
   const [trainingFiles, setTrainingFiles] = useState<File[]>([]);
   const [trainState, setTrainState] = useState<TrainState>("idle");
   const [trainProgress, setTrainProgress] = useState(0);
@@ -381,10 +390,16 @@ export default function InspectionLab() {
   }
 
   const header = <header className="topbar"><a href="#top" className="brand" aria-label="Sightline home"><span className="brand-mark"><ScanLine size={18} /></span><span>{projectName}<small>{pageCopy.brandDescriptor}</small></span></a><nav className={menuOpen ? "nav-open" : ""} aria-label="Main navigation">{navItems.map((item) => { const tab = "tab" in item ? item.tab : undefined; const key = tab ?? item.section; return <a key={item.label} className={activeNav === key ? "active" : ""} aria-current={activeNav === key ? "location" : undefined} href={item.href} onClick={() => { setMenuOpen(false); if (tab) setToolsTab(tab); }}>{item.label}</a>; })}</nav><div className="top-actions"><span className={`sample-badge topbar-demo ${backendOk === false ? "is-down" : "is-live"}`}>{backendOk === undefined ? "CHECKING SERVER" : backendOk ? demoModeLabel : "SERVER OFFLINE"}</span><OfflineIndicator online={online} /><button className="icon-button theme-button" onClick={() => setDark((value) => !value)} aria-label={dark ? "Use light appearance" : "Use dark appearance"}>{dark ? <Sun size={16} /> : <Moon size={16} />}</button><button className="mobile-menu icon-button" onClick={() => setMenuOpen((value) => !value)} aria-label="Toggle navigation">{menuOpen ? <X size={18} /> : <Menu size={18} />}</button><MagneticLink className="nav-cta" href="#inspect">{pageCopy.openInspector} <ArrowRight size={14} /></MagneticLink></div></header>;
-  return <main className={dark ? "lab-shell dark-mode" : "lab-shell"}>
-    {header}
+  const Shell = page ? "div" : "main";
+  return <Shell className={`${dark ? "lab-shell dark-mode" : "lab-shell"}${page ? ` lab-view lab-view-${page}` : ""}`}>
+    {!page && header}
+    {!page && <>
     <section ref={heroRef} className="hero" id="top"><FloatingSamples /><div className="hero-copy"><Eyebrow><span className="live-pip" /> {pageCopy.heroEyebrow}</Eyebrow><motion.h1 className="hero-title" initial={reducedMotion ? false : { opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: reducedMotion ? 0 : 0.8, ease: [0.22, 1, 0.36, 1] }}>{pageCopy.heroHeadline}<motion.em initial={reducedMotion ? false : { opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: reducedMotion ? 0 : 0.8, delay: reducedMotion ? 0 : 0.12, ease: [0.22, 1, 0.36, 1] }}>{pageCopy.heroEmphasis}</motion.em></motion.h1><p className="hero-subtitle">{pageCopy.heroSubtitle}</p><div className="hero-buttons"><MagneticLink className="button-primary" href="#inspect">{pageCopy.tryInspector} <ArrowDown size={15} /></MagneticLink><MagneticLink className="button-secondary" href="#train">{pageCopy.trainNewPart} <ArrowRight size={15} /></MagneticLink></div><div className="hero-footnote"><span className="sample-badge">{sampleDataLabel}</span><span>{pageCopy.previewNote}</span></div><ProjectTargetsStrip /></div><HeroStack scrollProgress={heroProgress} /><div className="hero-bottom"><span className={mono}>{pageCopy.heroFigure}</span><span className={mono}>{pageCopy.scrollPrompt} <ArrowDown size={12} /></span></div></section>
+    </>}
+    {!page && <>
     <section ref={methodRef} className="method-section" id="method"><div className="method-intro"><SectionHeading index="01" title={pageCopy.methodTitle} description={pageCopy.methodDescription} /><div className="method-meta"><span className="sample-badge">{sampleDataLabel}</span><span className={mono}>{pageCopy.processTag}</span></div></div><div className="method-layout"><div className="method-steps"><div className="method-progress-track" aria-hidden="true"><motion.span className="method-progress-fill" style={{ scaleY: reducedMotion ? 1 : methodProgress }} /></div>{steps.map((step, index) => <motion.article key={step.number} layout className={`method-step ${activeStep === index ? "active" : ""}`} initial={reducedMotion ? false : { opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, amount: 0.4 }} transition={{ duration: reducedMotion ? 0 : 0.8, delay: index * 0.08, ease: [0.22, 1, 0.36, 1] }}><span className={`${mono} step-number`}>{step.number}</span><div><h3>{step.title}</h3><p>{step.text}</p></div><span className="step-indicator">{index === 3 ? <Check size={15} /> : <ArrowRight size={15} />}</span></motion.article>)}</div><div className={`method-figure stage-${activeStep}`}><div className="figure-head"><Eyebrow>{pageCopy.referenceObject}</Eyebrow><span className={`${mono} figure-dim`}>{pageCopy.referenceDiameter}</span></div><CornerFrame className="method-photo"><Image src={sampleImagePaths[0]} alt="Sample precision metal fastener" fill sizes="(max-width: 800px) 90vw, 460px" className="part-image" /><span className="figure-cross cross-a">+</span><span className="figure-cross cross-b">+</span><motion.span className="heat-spot method-spot" animate={{ opacity: activeStep < 1 ? 0 : activeStep === 1 ? 0.18 : activeStep === 2 ? 0.52 : 1, scale: activeStep === 3 ? 1.2 : 0.86 }} transition={reducedMotion ? { duration: 0 } : { type: "spring", stiffness: 105, damping: 20 }} /></CornerFrame><div className="figure-footer"><span className={mono}>{pageCopy.referenceImageNumber}</span><span className="figure-line" /><span className={mono}>GOOD REFERENCE</span></div></div></div></section>
+    </>}
+    {show("train") && <>
     <section className="console-section" id="train"><div className="console-top"><SectionHeading index="02" title={pageCopy.trainingTitle} description={pageCopy.trainingDescription} dark /><div className="console-code"><span className="live-pip" /> {pageCopy.localConsole} <span className="console-sep">/</span> TRAIN</div></div>
       <div className="console-panel">
         <div className="panel-title"><div><span className="panel-index">A</span><div><h3>{pageCopy.trainingSetup}</h3><p>{pageCopy.trainingSetupDescription}</p></div></div><span className="sample-badge dark-badge">{sampleDataLabel}</span></div>
@@ -412,6 +427,8 @@ export default function InspectionLab() {
       </div>
       <div className="console-note"><CircleHelp size={14} /><span>{pageCopy.trainingConsoleNote}</span><span className={`${mono} console-note-right`}>{pageCopy.noGpuFootnote}</span></div>
     </section>
+    </>}
+    {show("inspect") && <>
     <section className="inspect-section" id="inspect"><div className="inspect-heading"><SectionHeading index="03" title={pageCopy.inspectTitle} description={pageCopy.inspectDescription} /><span className="sample-badge">{sampleDataLabel}</span></div>
       <div className={`demo-banner ${backendOk === false ? "is-down" : "is-live"}`}><span className="demo-banner-icon">{backendOk === false ? <TriangleAlert size={15} /> : <ShieldCheck size={15} />}</span><div><strong>{backendOk === false ? "Inspection server not reachable" : pageCopy.demoBannerTitle}</strong><span>{backendOk === false ? `Start it on this laptop: uvicorn app:app --port 8000 (looking at ${API_URL})` : pageCopy.demoBannerDescription}</span></div><span className={`${mono} demo-ref`}>{backendOk === false ? "API / OFFLINE" : pageCopy.apiStatus}</span></div>
       <div className="inspect-workspace">
@@ -444,24 +461,34 @@ export default function InspectionLab() {
         </div>
       </div>
     </section>
+    </>}
+    {show("tools") && <>
     <section className="tools-section" id="tools"><SectionHeading index="04" title={toolsSectionTitle} description={toolsSectionDescription} />
-      <div className="tools-tabs" role="tablist" aria-label={pageCopy.toolsTablistLabel}><button id="evaluation-tab" type="button" role="tab" aria-selected={toolsTab === "evaluation"} aria-controls="evaluation-panel" tabIndex={toolsTab === "evaluation" ? 0 : -1} onClick={() => setToolsTab("evaluation")} onKeyDown={(event) => { if (event.key === "ArrowRight" || event.key === "ArrowLeft") { event.preventDefault(); setToolsTab("objects"); document.getElementById("objects-tab")?.focus(); } }}>{pageCopy.evaluationTab}</button><button id="objects-tab" type="button" role="tab" aria-selected={toolsTab === "objects"} aria-controls="objects-panel" tabIndex={toolsTab === "objects" ? 0 : -1} onClick={() => setToolsTab("objects")} onKeyDown={(event) => { if (event.key === "ArrowRight" || event.key === "ArrowLeft") { event.preventDefault(); setToolsTab("evaluation"); document.getElementById("evaluation-tab")?.focus(); } }}>{pageCopy.objectsTab}</button></div>
+      {!page && <div className="tools-tabs" role="tablist" aria-label={pageCopy.toolsTablistLabel}><button id="evaluation-tab" type="button" role="tab" aria-selected={toolsTab === "evaluation"} aria-controls="evaluation-panel" tabIndex={toolsTab === "evaluation" ? 0 : -1} onClick={() => setToolsTab("evaluation")} onKeyDown={(event) => { if (event.key === "ArrowRight" || event.key === "ArrowLeft") { event.preventDefault(); setToolsTab("objects"); document.getElementById("objects-tab")?.focus(); } }}>{pageCopy.evaluationTab}</button><button id="objects-tab" type="button" role="tab" aria-selected={toolsTab === "objects"} aria-controls="objects-panel" tabIndex={toolsTab === "objects" ? 0 : -1} onClick={() => setToolsTab("objects")} onKeyDown={(event) => { if (event.key === "ArrowRight" || event.key === "ArrowLeft") { event.preventDefault(); setToolsTab("evaluation"); document.getElementById("evaluation-tab")?.focus(); } }}>{pageCopy.objectsTab}</button></div>}
+      {page === "evaluation" && <label className="select-label eval-object" htmlFor="eval-object"><Eyebrow>{pageCopy.objectSelectLabel}</Eyebrow><div className="select-wrap"><select id="eval-object" value={selectedObject} onChange={(event) => setSelectedObject(event.target.value)}>{objectStatuses.filter((s) => s.status === "Trained").map((s) => <option key={s.objectId} value={s.objectId}>{s.objectName}</option>)}{!objectStatuses.some((s) => s.objectId === selectedObject && s.status === "Trained") && <option value={selectedObject}>{currentObject.name} (not trained)</option>}</select><ChevronDown size={15} /></div></label>}
       <EvaluationPanel objectId={selectedObject} objectName={currentObject.name} active={toolsTab === "evaluation"} />
       <ObjectLibraryPanel statuses={objectStatuses} loading={objectStatusesLoading} error={objectStatusError} active={toolsTab === "objects"} />
     </section>
+    </>}
+    {show("history") && <>
     <section className="history-section" id="history"><div className="history-head"><SectionHeading index="05" title={pageCopy.historyTitle} description={pageCopy.historyDescription} /><div className="history-actions"><label htmlFor="history-filter" className="sr-only">{pageCopy.historyFilter}</label><select id="history-filter" value={historyFilter} onChange={(event) => setHistoryFilter(event.target.value)}><option>{pageCopy.historyAll}</option><option>Good</option><option>Defective</option><option>Unsure</option><option>Retake</option></select><label htmlFor="history-part" className="sr-only">Part</label><select id="history-part" value={historyPart} onChange={(event) => setHistoryPart(event.target.value)}><option value="">All parts</option>{[...new Set([...loggedParts, ...(historyPart ? [historyPart] : [])])].map((id) => <option key={id} value={id}>{objectCategories.find((o) => o.id === id)?.name ?? id}</option>)}</select><label htmlFor="report-range" className="sr-only">Shift report time range</label><select id="report-range" value={reportRange} onChange={(event) => setReportRange(event.target.value)}><option value="1">Last 1 h</option><option value="12">Last 12 h</option><option value="24">Last 24 h</option><option value="all">All time</option></select><a className="export-button" href={logCsvUrl(logFilter)} download><Download size={14} /> {pageCopy.historyExport}</a><a className="export-button" href={reportPageUrl(logFilter)} target="_blank" rel="noopener noreferrer"><FileImage size={14} /> Shift report</a></div></div>
       {shift && <div className="shift-strip">{[[shift.total, "inspected"], [shift.counts.good, "good"], [shift.counts.defective, "defective"], [shift.counts.unsure, "sent to a person"], [shift.counts.retake, "retakes"], [shift.operator_corrections, "corrected"]].map(([n, label]) => <div key={label as string}><strong>{n}</strong><span>{label}</span></div>)}</div>}
       <div className="history-table-wrap"><table className="history-table"><thead><tr>{pageCopy.historyColumns.map((column) => <th key={column}>{column}</th>)}</tr></thead><tbody>{historyLoading ? <tr aria-busy="true"><td colSpan={6} className="history-loading"><span className="history-skeleton" aria-hidden="true" />{historyLoadingCopy}</td></tr> : historyError ? <tr><td colSpan={6} className="history-error" role="alert">{historyErrorCopy}</td></tr> : visibleHistory.length ? <AnimatePresence initial={false} mode="popLayout">{visibleHistory.map((record, index) => <motion.tr layout key={record.id} initial={reducedMotion ? false : { opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} exit={reducedMotion ? undefined : { opacity: 0, x: 12 }} transition={{ duration: reducedMotion ? 0 : 0.4, delay: Math.min(index, 8) * 0.04, ease: [0.22, 1, 0.36, 1] }}><td><span className="history-image"><img src={record.imageUrl} alt={`${record.objectName} heatmap`} className="thumb-img" /></span><span className={`${mono} history-id`}>{record.id}</span></td><td>{record.objectName}</td><td><span className={`table-verdict ${record.verdict === "Good" ? "pass" : record.verdict.toLowerCase()}`}><i />{record.verdict}{record.corrected ? " (corrected)" : ""}</span></td><td className={mono}>{record.score.toFixed(2)} <span className="threshold-note">/ {record.threshold.toFixed(2)}</span></td><td className={mono}>{record.latencyMs} ms</td><td className={mono}>{record.inspectedAt}</td></motion.tr>)}</AnimatePresence> : <tr><td colSpan={6} className="empty-history"><FileImage size={18} /><span>{history.length ? pageCopy.historyNoMatch : "No inspections yet. Inspect a photo and it appears here."}</span></td></tr>}</tbody></table></div>
       <div className="history-foot"><span className={`${mono} muted-small`}>{pageCopy.historyRecordCount(visibleHistory.length)}</span><span className={`${mono} muted-small`}>{pageCopy.historySession}</span></div>
     </section>
+    </>}
+    {show("spec") && <>
     <section className="spec-section"><div className="spec-heading"><SectionHeading index="06" title={systemSectionTitle} description={systemSectionDescription} dark /><span className="targets-tag">{pageCopy.systemTargetsLabel}</span></div>
       <div className="spec-grid">{projectTargets.map((spec, index) => { const Icon = spec.id === "objects" ? Activity : spec.id === "learning" ? Clock3 : spec.id === "latency" ? Gauge : WifiOff; return <motion.div className="spec-card" key={spec.id} initial={reducedMotion ? false : { opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, amount: 0.25 }} transition={{ duration: reducedMotion ? 0 : 0.8, delay: index * 0.08, ease: [0.22, 1, 0.36, 1] }}><div className="spec-card-top"><span className="spec-icon"><Icon size={17} /></span><span className={`${mono} spec-number`}>0{index + 1}</span></div><div><h3>{spec.target}</h3><p>{spec.detail}</p></div><div className="measured"><span className={mono}>MEASURED</span><strong>{spec.measured}</strong></div></motion.div>; })}</div>
       <p className="spec-disclaimer">{pageCopy.targetDisclaimer}</p>
       <RuntimeStatusPanel online={online} backendOk={backendOk ?? null} />
     </section>
+    </>}
+    {!page && <>
     <LimitationsPanel />
     <footer className="footer"><a href="#top" className="brand footer-brand"><span className="brand-mark"><ScanLine size={17} /></span><span>{projectName}<small>{pageCopy.brandDescriptor}</small></span></a><div className="footer-project-meta"><span className={mono}>{pageCopy.teamPrefix} · {teamNamePlaceholder}</span><span className={mono}>{hackathonName}</span></div><span className={`${mono} footer-version`}>{pageCopy.demoVersion}</span></footer>
-  </main>;
+    </>}
+  </Shell>;
 }
 
 const partName = (id: string) => objectCategories.find((o) => o.id === id)?.name ?? id;

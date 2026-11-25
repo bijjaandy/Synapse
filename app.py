@@ -13,12 +13,15 @@ import zipfile
 from pathlib import Path
 
 import torch
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 from PIL import Image
 
+import assistant
+from auth import ROLES, UserStore, bearer, require_role
 from inspection_log import InspectionLog
 from inspector import BACKBONES, WEIGHTS_DIR, FeatureExtractor, Inspector, SampleMeter, choose_backbone, list_images, overlay
 
@@ -42,6 +45,12 @@ fx_lock = threading.Lock()
 meters: dict[str, SampleMeter] = {}  # webcam capture sessions for the "enough photos?" meter
 meter_lock = threading.Lock()
 inspection_log = InspectionLog(ROOT / "logs")
+users = UserStore(ROOT / "users.json")
+
+
+def can_verify(authorization: str | None = Header(None)):
+    """Only QC inspectors and supervisors verify. Looks up `users` at call time so tests can swap the store."""
+    return require_role(users, "inspector", "supervisor")(authorization)
 
 
 def check_name(name):
@@ -206,8 +215,15 @@ def predict(name: str, file: UploadFile = File(...), heatmap: bool = True, log: 
     buf = io.BytesIO()
     overlay(io.BytesIO(data), r["map"], buf, vmax=m.high * 1.5)
     png = buf.getvalue()
+    photo = None
+    if log:
+        img = decode_image(data, "photo")
+        img.thumbnail((640, 640))
+        jb = io.BytesIO()
+        img.save(jb, format="JPEG", quality=88)
+        photo = jb.getvalue()
     out["inspection_id"] = inspection_log.add(name, r["label"], r["score"], m.thr, r["ms"], m.fx.name,
-                                              r["reasons"], png) if log else None
+                                              r["reasons"], png, photo) if log else None
     if heatmap:
         out["heatmap_png_base64"] = base64.b64encode(png).decode()
     return out
@@ -340,6 +356,109 @@ figcaption{{font-size:12px;color:#444}} @media print{{button{{display:none}}}}</
 
 # web UI: page at /, other assets under /static (not mounted at / so unknown API paths still 404 as before)
 app.mount("/static", StaticFiles(directory=ROOT / "static"), name="static")
+
+
+# ---------- logins (three roles) ----------
+
+class LoginBody(BaseModel):
+    username: str
+    password: str
+
+
+@app.post("/auth/login")
+def auth_login(body: LoginBody):
+    got = users.login(body.username, body.password)
+    if not got:
+        raise HTTPException(401, "Wrong username or password.")
+    token, s = got
+    return {"token": token, "username": s["username"], "role": s["role"], "role_name": ROLES[s["role"]],
+            "display": s["display"]}
+
+
+@app.get("/auth/me")
+def auth_me(authorization: str | None = Header(None)):
+    s = users.who(bearer(authorization))
+    if not s:
+        raise HTTPException(401, "Not logged in.")
+    return {"username": s["username"], "role": s["role"], "role_name": ROLES[s["role"]], "display": s["display"]}
+
+
+@app.post("/auth/logout")
+def auth_logout(authorization: str | None = Header(None)):
+    users.logout(bearer(authorization))
+    return {"ok": True}
+
+
+# ---------- human verification (QC inspector) ----------
+
+@app.get("/verify/queue")
+def verify_queue(object: str | None = None, limit: int = 50, who: dict = Depends(can_verify)):
+    if object:
+        check_name(object)
+    return inspection_log.queue(object, max(1, min(limit, 200)))
+
+
+@app.get("/log/{rid}/photo.jpg")
+def log_photo(rid: int):
+    p = inspection_log.photo_path(rid)
+    if not p:
+        raise HTTPException(404, "no photo stored for that inspection")
+    return FileResponse(p, media_type="image/jpeg")
+
+
+class VerifyBody(BaseModel):
+    decision: str
+    note: str = ""
+
+
+@app.post("/verify/{rid}")
+def verify(rid: int, body: VerifyBody, who: dict = Depends(can_verify)):
+    """The inspector's final call. 'good' also teaches the model that this photo is good (instant, no retraining)."""
+    if body.decision not in ("good", "defective"):
+        raise HTTPException(400, "decision must be 'good' or 'defective'")
+    row = inspection_log.get(rid)
+    if not row:
+        raise HTTPException(404, "no such inspection")
+    learned = False
+    if body.decision == "good":
+        p = inspection_log.photo_path(rid)
+        if p:
+            m = get_model(row["object"])
+            with state_lock:
+                m.add_good(p)
+                m.save(MODELS / f"{row['object']}.pt")
+            learned = True
+    inspection_log.verify(rid, body.decision, who["username"], body.note)
+    return {"id": rid, "decision": body.decision, "by": who["username"], "model_learned": learned}
+
+
+# ---------- summary and assistant ----------
+
+@app.get("/summary")
+def summary():
+    return inspection_log.summary()
+
+
+@app.get("/assistant/status")
+def assistant_status():
+    return assistant.status()
+
+
+class AskBody(BaseModel):
+    message: str
+    history: list[dict] = []
+
+
+@app.post("/assistant")
+def assistant_ask(body: AskBody):
+    msg = body.message.strip()
+    if not msg:
+        raise HTTPException(400, "Ask a question.")
+    detail = None
+    rid = assistant.mentioned_id(msg)
+    if rid:
+        detail = inspection_log.get(rid)
+    return assistant.ask(msg, body.history, inspection_log.summary(), inspection_log.rows(limit=15), detail)
 
 
 @app.get("/", include_in_schema=False)

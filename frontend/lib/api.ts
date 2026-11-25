@@ -289,3 +289,64 @@ export async function meterAdd(session: string, file: File): Promise<MeterStatus
 export function meterEnd(session: string) {
   return call(`/meter/${session}`, { method: "DELETE" }).catch(() => undefined);
 }
+
+// ---------- Netrix IQ: logins, human verification, summary, assistant ----------
+
+export type Role = "operator" | "inspector" | "supervisor";
+export type Session = { token: string; username: string; role: Role; role_name: string; display: string };
+
+const SESSION_KEY = "netrix.session";
+
+export function loadSession(): Session | null {
+  if (typeof window === "undefined") return null;
+  try { return JSON.parse(window.localStorage.getItem(SESSION_KEY) ?? "null"); } catch { return null; }
+}
+function saveSession(s: Session | null) {
+  try { if (s) window.localStorage.setItem(SESSION_KEY, JSON.stringify(s)); else window.localStorage.removeItem(SESSION_KEY); } catch { /* private mode */ }
+}
+const authHeaders = (): Record<string, string> => { const s = loadSession(); return s ? { Authorization: `Bearer ${s.token}` } : {}; };
+
+export async function login(username: string, password: string): Promise<Session> {
+  const s = await call<Session>("/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username, password }) });
+  saveSession(s);
+  return s;
+}
+/** Confirms the saved session is still valid on the server (it forgets logins when restarted). */
+export async function checkSession(): Promise<Session | null> {
+  const s = loadSession();
+  if (!s) return null;
+  try { await call("/auth/me", { headers: authHeaders() }); return s; } catch { saveSession(null); return null; }
+}
+export async function logout() {
+  await call("/auth/logout", { method: "POST", headers: authHeaders() }).catch(() => undefined);
+  saveSession(null);
+}
+
+export type QueueItem = { id: number; ts: number; object: string; label: string; score: number; threshold: number; ms: number; reasons: string };
+export const photoUrl = (id: number) => `${API_URL}/log/${id}/photo.jpg`;
+export const heatmapUrl = (id: number) => `${API_URL}/log/${id}/heatmap.png`;
+
+export async function getVerifyQueue(): Promise<QueueItem[]> {
+  return call<QueueItem[]>("/verify/queue?limit=100", { headers: authHeaders() });
+}
+export async function verifyInspection(id: number, decision: "good" | "defective", note = ""): Promise<{ model_learned: boolean }> {
+  return call(`/verify/${id}`, { method: "POST", headers: { ...authHeaders(), "Content-Type": "application/json" }, body: JSON.stringify({ decision, note }) });
+}
+
+export type Summary = {
+  total: number;
+  counts: { good: number; defective: number; unsure: number; retake: number };
+  by_object: { object: string; total: number; good: number; defective: number; unsure: number; retake: number }[];
+  verification: { pending: number; verified: number; confirmed_defective: number; overturned_to_good: number };
+  operator_corrections: number; avg_ms: number; max_ms: number; first: number | null; last: number | null;
+};
+export async function getSummary(): Promise<Summary> { return call<Summary>("/summary"); }
+
+export type ChatMessage = { role: "user" | "assistant"; content: string; source?: string; model?: string | null; ms?: number };
+export async function assistantStatus(): Promise<{ ollama: boolean; model: string; model_installed: boolean }> {
+  return call("/assistant/status");
+}
+export async function askAssistant(message: string, history: ChatMessage[]): Promise<{ answer: string; source: string; model: string | null; ms: number }> {
+  return call("/assistant", { method: "POST", headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ message, history: history.map(({ role, content }) => ({ role, content })) }) });
+}
