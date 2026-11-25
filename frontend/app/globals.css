@@ -915,3 +915,16 @@ body { font-family:var(--font-ui); font-size:16px; }
 .strictness-scale span { position: absolute; top: 0; white-space: nowrap; }
 .strictness-scale span:nth-child(2) { transform: translateX(-50%); }
 .strictness-note { font-size: .72rem; color: var(--forest); opacity: .8; }
+
+/* judge test mode */
+.judge-panel { margin-top: 1.25rem; }
+.judge-progress { height: 6px; margin-top: .8rem; border-radius: 999px; background: color-mix(in srgb, var(--sage) 25%, transparent); overflow: hidden; }
+.judge-progress span { display: block; height: 100%; background: var(--forest); transition: width .2s; }
+.judge-summary { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem 1rem; margin: 1rem 0 .6rem; font-size: .85rem; color: var(--forest); }
+.judge-summary .judge-sort { margin-left: auto; }
+.judge-table-wrap { max-height: 420px; overflow: auto; border: 1px solid var(--line); border-radius: 12px; }
+.judge-table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+.judge-table th { position: sticky; top: 0; background: var(--panel, var(--cream)); text-align: left; font-weight: 600; padding: .5rem; border-bottom: 1px solid var(--line); }
+.judge-table td { padding: .35rem .5rem; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.judge-thumb { width: 40px; height: 40px; object-fit: cover; border-radius: 6px; display: block; }
+.judge-file { max-width: 260px; overflow-wrap: anywhere; }

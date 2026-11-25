@@ -127,6 +127,25 @@ def main():
                 mine.first.locator(".verify-defect").click()
                 page.wait_for_timeout(1500)
                 print("after confirm:", page.locator(".verify-item", has_text=PART).count(), "of ours left")
+            # judge test mode: a folder of three test photos through the test part, not logged
+            import shutil
+            jdir = tmp / "judge"; (jdir / "sub").mkdir(parents=True, exist_ok=True)
+            shutil.copy(tmp / "inspect_good.png", jdir / "a_good.png")
+            shutil.copy(tmp / "inspect_scratched.png", jdir / "sub" / "b_scratched.png")
+            shutil.copy(tmp / "inspect_dark.png", jdir / "c_dark.png")
+            if page.locator("#eval-object").count():
+                page.select_option("#eval-object", PART)
+            page.locator("#judge-panel input[type=file]").set_input_files(str(jdir))
+            page.click(".judge-run")
+            page.wait_for_function("document.querySelectorAll('.judge-table tbody tr').length === 3 && !document.querySelector('.judge-run:disabled')", timeout=60000)
+            print("judge:", page.inner_text(".judge-summary").split("\n")[0], "| rows:", page.locator(".judge-table tbody tr").count())
+            page.click(".judge-sort")
+            print("judge sorted:", [t.split("\t")[2] if "\t" in t else t for t in page.locator(".judge-table tbody tr td:nth-child(3)").all_inner_texts()])
+            with page.expect_download() as dl:
+                page.click(".judge-csv")
+            lines = Path(dl.value.path()).read_text(encoding="utf-8").strip().splitlines()
+            print("judge csv:", lines[0], "|", len(lines) - 1, "rows")
+            page.locator("#judge-panel").screenshot(path=str(SHOTS / "judge.png"))
             page.fill("#chat-q", "How many parts were inspected?")
             before = page.locator(".chat-msg.assistant").count()
             page.click(".chat-input button")

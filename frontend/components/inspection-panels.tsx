@@ -1,8 +1,9 @@
 "use client";
 
+import { whereWords } from "@/lib/voice";
 import { useEffect, useRef, useState, type InputHTMLAttributes } from "react";
 import { AlertCircle, Check, Clock3, FolderOpen, LoaderCircle, RefreshCw, Trash2, Upload, Wifi, WifiOff, Gauge } from "lucide-react";
-import { deleteObject, evaluateTestSet, loadSession, type EvaluationResult, type ObjectTrainingStatus, setStrictness, STRICTNESS_MIN, STRICTNESS_MAX } from "@/lib/api";
+import { deleteObject, evaluateTestSet, loadSession, type EvaluationResult, type ObjectTrainingStatus, setStrictness, STRICTNESS_MIN, STRICTNESS_MAX, inspect } from "@/lib/api";
 import { evaluationCopy, limitationCopy, limitationTitle, limitationsEyebrow, measuredLabel, objectCategories, objectViewCopy, projectTargets, projectTargetsLabel, runtimeIndicatorLabel, runtimeOfflineLabel, runtimeOnlineLabel, runtimeStatusCopy, runtimeTargetCopy, runtimeTargetLabel, sampleDataLabel } from "@/config/content";
 
 const mono = "font-mono";
@@ -107,6 +108,77 @@ function StrictnessControl({ id, value, canEdit, onSaved }: { id: string; value:
     <div className="strictness-scale" aria-hidden="true"><span style={{ left: 0 }}>Lenient 0.8</span><span style={{ left: pct(1) }}>Normal 1.0</span><span style={{ right: 0 }}>Strict 1.25</span></div>
     <small className="strictness-note">Lenient = fewer false alarms. Strict = fewer missed defects.</small>
     {error && <small className="cam-error" role="alert">{error}</small>}
+  </div>;
+}
+
+type JudgeRow = { file: string; url: string; verdict: string; label: string; score: number; threshold: number; ratio: number; ms: number; where: string; reasons: string };
+const JUDGE_COLUMNS = ["file", "label", "score", "threshold", "ratio", "ms", "where", "reasons"] as const;
+const VERDICT_ORDER: Record<string, number> = { Defective: 0, Unsure: 1, Retake: 2, Good: 3 };
+
+/** Judge test mode: a folder of unlabelled photos -> verdict per photo (not logged), sortable, CSV like judge.py. */
+export function JudgePanel({ objectId, objectName }: { objectId: string; objectName: string }) {
+  const folder = useRef<HTMLInputElement>(null);
+  const [files, setFiles] = useState<File[]>([]);
+  const [rows, setRows] = useState<JudgeRow[]>([]);
+  const [progress, setProgress] = useState<[number, number] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [sortByVerdict, setSortByVerdict] = useState(false);
+  const urls = useRef<string[]>([]);
+  const running = progress !== null && progress[0] < progress[1];
+  const clearUrls = () => { urls.current.forEach((u) => URL.revokeObjectURL(u)); urls.current = []; };
+  useEffect(() => clearUrls, []);
+
+  async function run() {
+    clearUrls();
+    setError(null); setRows([]); setProgress([0, files.length]);
+    const out: JudgeRow[] = [];
+    try {
+      for (const f of files) {
+        const r = await inspect(objectId, f, { log: false });
+        const url = URL.createObjectURL(f);
+        urls.current.push(url);
+        out.push({ file: (f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name, url,
+                   verdict: r.verdict, label: r.verdict.toLowerCase(), score: r.score, threshold: r.threshold,
+                   ratio: Math.round((r.score / r.threshold) * 1000) / 1000, ms: r.latencyMs,
+                   where: r.regions.map((g) => whereWords(g.x, g.y)).join("; "), reasons: r.reasons.join("; ") });
+        setRows([...out]);
+        setProgress([out.length, files.length]);
+      }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+      setProgress(null);
+    }
+  }
+
+  function downloadCsv() {
+    const cell = (v: string | number) => { const t = String(v); return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t; };
+    const text = [JUDGE_COLUMNS.join(","), ...rows.map((r) => JUDGE_COLUMNS.map((c) => cell(r[c])).join(","))].join("\r\n") + "\r\n";
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([text], { type: "text/csv" }));
+    a.download = `judge_${objectId}.csv`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+
+  const shown = sortByVerdict ? [...rows].sort((a, b) => (VERDICT_ORDER[a.verdict] ?? 9) - (VERDICT_ORDER[b.verdict] ?? 9) || b.ratio - a.ratio) : rows;
+  const counts = ["Good", "Defective", "Unsure", "Retake"].map((v) => [v, rows.filter((r) => r.verdict === v).length] as const);
+  const avg = rows.length ? Math.round(rows.reduce((t, r) => t + r.ms, 0) / rows.length) : 0;
+  const slowest = rows.length ? Math.max(...rows.map((r) => r.ms)) : 0;
+
+  return <div className="evaluation-panel judge-panel" id="judge-panel">
+    <div className="panel-intro"><div><h3>Judge test mode</h3><p>Pick a folder of unlabelled photos. Each one runs through the trained <b>{objectName}</b> model (not added to the history), and you get a verdict per photo and a CSV, the same as <code>python judge.py</code>.</p></div><span className="sample-badge">NOT LOGGED</span></div>
+    <input ref={folder} className="sr-only" type="file" aria-label="Folder of photos to judge" accept="image/*" multiple {...({ webkitdirectory: "" } as unknown as InputHTMLAttributes<HTMLInputElement>)} onChange={(event) => { setFiles(Array.from(event.target.files ?? []).filter((f) => f.type.startsWith("image/"))); setRows([]); setProgress(null); setError(null); }} />
+    <div className="evaluation-folders"><button type="button" className="folder-picker" onClick={() => folder.current?.click()} disabled={running}><FolderOpen size={18} /><span><strong>Folder of photos</strong><small>{files.length ? `${files.length} images selected` : "Choose a folder (sub-folders included)"}</small></span><Upload size={15} /></button></div>
+    <button type="button" className="run-inspection judge-run" onClick={run} disabled={!files.length || running}>{running ? <><LoaderCircle size={16} /> Judging {progress?.[0]} / {progress?.[1]}</> : <>Judge {files.length || ""} photos <Check size={15} /></>}</button>
+    {progress && <div className="judge-progress" role="progressbar" aria-label="Judging progress" aria-valuemin={0} aria-valuemax={progress[1]} aria-valuenow={progress[0]}><span style={{ width: `${progress[1] ? (progress[0] / progress[1]) * 100 : 0}%` }} /></div>}
+    {error && <div className="evaluation-state error-state" role="alert"><AlertCircle size={17} /><p>{error}</p></div>}
+    {rows.length > 0 && <div className="judge-results">
+      <div className="judge-summary"><span>{counts.map(([v, n]) => `${n} ${v.toLowerCase()}`).join(" · ")}</span><span>avg {avg} ms · slowest {slowest} ms</span>
+        <button type="button" className="export-button judge-sort" aria-pressed={sortByVerdict} onClick={() => setSortByVerdict((v) => !v)}>{sortByVerdict ? "File order" : "Sort by verdict"}</button>
+        <button type="button" className="export-button judge-csv" onClick={downloadCsv} disabled={running}>Download CSV</button></div>
+      <div className="judge-table-wrap"><table className="judge-table"><thead><tr><th>Photo</th><th>File</th><th>Verdict</th><th>Score / line</th><th>ms</th></tr></thead>
+        <tbody>{shown.map((r) => <tr key={r.url}><td><img src={r.url} alt="" className="judge-thumb" /></td><td className="judge-file">{r.file}</td><td><span className={`table-verdict ${r.verdict === "Good" ? "pass" : r.verdict.toLowerCase()}`}><i />{r.verdict}</span></td><td className={mono}>{r.score.toFixed(2)} <small>/ {r.threshold.toFixed(2)}</small></td><td className={mono}>{r.ms}</td></tr>)}</tbody></table></div>
+    </div>}
   </div>;
 }
 
