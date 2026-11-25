@@ -1390,3 +1390,13 @@ body { font-family:var(--font-ui); font-size:16px; }
 /* toolbar: the Ask AI link lines up with the other icon buttons */
 .tool-button.ask-ai { margin-top: 0; }
 .img-missing { display: grid; place-items: center; aspect-ratio: 1; border-radius: 10px; background: repeating-linear-gradient(45deg, color-mix(in srgb, #6B8E7B 10%, transparent) 0 8px, transparent 8px 16px); color: #243B35; font-size: .78rem; opacity: .8; text-align: center; padding: 8px; }
+
+/* landing intro: the headline keeps to the left ~half, the 3D stack (shifted right in stage 0) to the right */
+@media (min-width: 821px) { .pipeline-text.intro { max-width: min(620px, 52vw); } }
+/* intro: the step list waits for stage 1 (the stack sits on the right then), and the headline is sized so it ends before the stack */
+.pipeline-rail { transition: opacity .35s ease; }
+.pipeline-rail.intro-hidden { opacity: 0; pointer-events: none; }
+@media (min-width: 821px) { .pipeline-text.intro h1 { font-size: clamp(2.2rem, 4.6vw, 4.4rem); } }
+@media (prefers-reduced-motion: reduce) { .pipeline-rail { transition: none; } }
+@media (min-width: 821px) { .pipeline-text.intro p { max-width: min(52ch, 40vw); } }
+@media (min-width: 821px) { .pipeline-text.intro h1 { max-width: min(620px, 44vw); } }

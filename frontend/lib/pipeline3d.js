@@ -1,6 +1,7 @@
 // Landing page scene: the inspection pipeline as five stacked layers that separate as you scroll.
 // setProgress(0..1) is driven by the page scroll; the scene eases toward it every frame.
 import * as THREE from "three";
+const INTRO_SHIFT = 0.21;  // share of the screen width the stack moves right during the intro
 
 const C = { forest: 0x243b35, sage: 0x6b8e7b, mist: 0xb7c9b1, cream: 0xf1e9d2, defect: 0xc2571a, amber: 0xe0b341 };
 const W = 2.2, H = 1.5;                       // layer size
@@ -190,6 +191,15 @@ export class PipelineScene {
     const dist = 7.4 - Math.min(1, s) * 1.2 + (s > 5.5 ? (s - 5.5) * 2.4 : 0);
     this.camera.position.lerp(new THREE.Vector3(Math.sin(this.p * 1.6) * 1.2, 1.2 + focusZ * 0.55, dist), 0.08);
     this.camera.lookAt(this.lookAt);
+    // intro (stage 0): the stack sits in the right half so it never covers the headline; it eases back to the
+    // centre as the scroll moves into stage 1. A view offset shifts the whole picture in screen space.
+    const w = this.host.clientWidth, h = this.host.clientHeight;
+    if (w > 820 && h) {
+      const intro = reduceMotion ? (s < 0.5 ? 1 : 0) : Math.max(0, Math.min(1, 1 - s));
+      const ease = intro * intro * (3 - 2 * intro);
+      if (ease > 0.001) this.camera.setViewOffset(w, h, -INTRO_SHIFT * w * ease, 0, w, h);
+      else if (this.camera.view && this.camera.view.enabled) this.camera.clearViewOffset();
+    } else if (this.camera.view && this.camera.view.enabled) this.camera.clearViewOffset();
     this.renderer.render(this.scene, this.camera);
   }
 

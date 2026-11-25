@@ -105,7 +105,7 @@ export default function Landing() {
             </motion.div>
           </AnimatePresence>
         </div>
-        <ol className="pipeline-rail" aria-label="Pipeline steps">{STAGE_TEXT.slice(1, 6).map((s, i) =>
+        <ol className={`pipeline-rail ${stage === 0 ? "intro-hidden" : ""}`} aria-label="Pipeline steps">{STAGE_TEXT.slice(1, 6).map((s, i) =>
           <li key={s.kicker} className={stage === i + 1 ? "active" : stage > i + 1 ? "done" : ""}><span>{i + 1}</span>{s.kicker.split(" · ")[1]}</li>)}</ol>
         <div className="pipeline-progress" aria-hidden="true"><span style={{ transform: `scaleX(${progress})` }} /></div>
         {stage === 0 && <span className="pipeline-scroll"><ArrowDown size={14} /> Scroll</span>}
