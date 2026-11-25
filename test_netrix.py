@@ -232,3 +232,92 @@ def test_status_numbers_and_part_stats(netrix):
     server.models.clear()                         # numbers also come straight from the saved file
     s2 = c.get("/objects/stats_t/status").json()
     assert s2["threshold"] == s["threshold"] and s2["unsure_band"] == s["unsure_band"]
+
+
+def test_products_create_edit_and_list(netrix):
+    c = netrix
+    ho, _ = login(c, "operator", "operator123")
+    hi, _ = login(c, "inspector", "inspector123")
+    assert server.product_id("Bottle Cap 500ml") == "bottle_cap_500ml"
+    assert server.product_id("  Bracket -- Left #7 ") == "bracket_left_7"
+    assert len(server.product_id("x" * 90)) == 40
+    assert c.post("/products", json={"display_name": "Cap"}).status_code == 401           # must be signed in
+    r = c.post("/products", json={"display_name": "Bottle Cap 500ml", "sku": "BC-500"}, headers=ho)
+    assert r.status_code == 201, r.text
+    p = r.json()
+    assert p["id"] == "bottle_cap_500ml" and p["display_name"] == "Bottle Cap 500ml" and p["sku"] == "BC-500"
+    assert p["state"] == "new" and p["created_by"] == "operator"
+    assert c.post("/products", json={"display_name": "bottle cap 500ML"}, headers=ho).status_code == 409   # same id
+    assert c.post("/products", json={"display_name": "!!!"}, headers=ho).status_code == 400
+    c.post("/products", json={"display_name": "Washer A"}, headers=ho)
+    assert c.patch("/products/washer_a", json={"display_name": "BOTTLE CAP 500ml"}, headers=hi).status_code == 409  # name taken
+    assert c.patch("/products/washer_a", json={"sku": "W-1"}, headers=ho).status_code == 403                       # operator
+    r = c.patch("/products/washer_a", json={"display_name": "Washer A (steel)", "description": "M8"}, headers=hi).json()
+    assert r["id"] == "washer_a" and r["display_name"] == "Washer A (steel)" and r["description"] == "M8"
+    train_toy(c, "legacy_part", backbone="resnet18")                        # trained without details: title-cased name
+    listed = {o["id"]: o for o in c.get("/objects").json()}
+    assert listed["legacy_part"]["display_name"] == "Legacy Part" and listed["legacy_part"]["state"] == "ready"
+    assert listed["legacy_part"]["n_images"] == 30 and listed["legacy_part"]["backbone"] == "resnet18"
+    assert listed["legacy_part"]["trained_at"]
+    assert listed["bottle_cap_500ml"]["state"] == "new" and listed["bottle_cap_500ml"]["sku"] == "BC-500"
+    assert c.delete("/objects/washer_a", headers=hi).json()["deleted"] == "washer_a"           # details file goes too
+    assert "washer_a" not in {o["id"] for o in c.get("/objects").json()}
+
+
+def test_train_add_mode_keeps_photos(netrix):
+    c = netrix
+    train_toy(c, "addmode_t", n=20, backbone="resnet18")
+    rng = np.random.default_rng(31)
+    more = [("files", (f"m{i}.png", png(part(rng)[0]), "image/png")) for i in range(6)]
+    r = c.post("/objects/addmode_t/train", files=more, data={"backbone": "resnet18", "mode": "add"})
+    assert r.status_code == 202 and r.json()["n_images"] == 26 and r.json()["added"] == 6
+    from test_app import wait_ready
+    assert wait_ready(c, "addmode_t")["state"] == "ready"
+    names = sorted(p.name for p in (server.DATA / "addmode_t" / "good").glob("*.png"))
+    assert names == [f"{i:04d}.png" for i in range(26)]
+    few = [("files", ("x.png", png(part(rng)[0]), "image/png"))]                # a bad replace keeps the old photos
+    assert c.post("/objects/addmode_t/train", files=few, data={"mode": "replace"}).status_code == 400
+    assert len(list((server.DATA / "addmode_t" / "good").glob("*.png"))) == 26
+    assert c.post("/objects/addmode_t/train", files=few, data={"mode": "merge"}).status_code == 400
+
+
+def test_export_delete_import_predict(netrix):
+    import io as _io
+    import zipfile as _zip
+    c = netrix
+    ho, _ = login(c, "operator", "operator123")
+    hi, _ = login(c, "inspector", "inspector123")
+    c.post("/products", json={"display_name": "Export Me", "sku": "EX-1"}, headers=ho)
+    train_toy(c, "export_me", n=20, backbone="resnet18")
+    photo = png(part(np.random.default_rng(41), scratch=True)[0])
+    before = c.post("/objects/export_me/predict?log=false", files={"file": ("p.png", photo)}).json()
+    assert c.get("/objects/export_me/export.zip", headers=ho).status_code == 403
+    z = c.get("/objects/export_me/export.zip", headers=hi)
+    assert z.status_code == 200 and z.headers["content-type"] == "application/zip"
+    names = _zip.ZipFile(_io.BytesIO(z.content)).namelist()
+    assert "model.pt" in names and "product.json" in names and sum(n.startswith("good/") for n in names) == 20
+    imp = lambda data, q="": c.post(f"/objects/import{q}", files={"file": ("p.zip", data, "application/zip")}, headers=hi)
+    assert imp(z.content).status_code == 409                                     # still there
+    c.delete("/objects/export_me", headers=hi)
+    assert c.post("/objects/export_me/predict", files={"file": ("p.png", photo)}).status_code == 404
+    r = imp(z.content)
+    assert r.status_code == 201, r.text
+    assert r.json()["id"] == "export_me" and r.json()["display_name"] == "Export Me" and r.json()["photos"] == 20
+    after = c.post("/objects/export_me/predict?log=false", files={"file": ("p.png", photo)}).json()
+    assert after["label"] == before["label"] and abs(after["score"] - before["score"]) < 1e-3
+    assert imp(z.content, "?overwrite=true").status_code == 201
+
+    def zip_with(entries):
+        b = _io.BytesIO()
+        with _zip.ZipFile(b, "w") as zz:
+            for n, data in entries:
+                zz.writestr(n, data)
+        return b.getvalue()
+    good = _zip.ZipFile(_io.BytesIO(z.content))
+    model, details = good.read("model.pt"), good.read("product.json")
+    assert imp(zip_with([("model.pt", model), ("product.json", details), ("../evil.png", b"x")])).status_code == 400
+    assert imp(zip_with([("model.pt", model), ("product.json", details), ("good/../../x.png", b"x")])).status_code == 400
+    assert imp(zip_with([("model.pt", b"not a model"), ("product.json", details)]), "?overwrite=true").status_code == 400
+    assert imp(zip_with([("model.pt", model), ("product.json", b'{"id": "../x"}')])).status_code == 400
+    assert imp(b"not a zip").status_code == 400
+    assert c.post("/objects/import", files={"file": ("p.zip", z.content, "application/zip")}).status_code == 401

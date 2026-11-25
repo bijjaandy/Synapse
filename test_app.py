@@ -53,7 +53,8 @@ def test_train_predict_feedback(client):
     assert r.status_code == 202 and r.json()["n_images"] == 40
     s = wait_ready(client, "washer")
     assert s["state"] == "ready" and s["backbone"] == "resnet18", s
-    assert client.get("/objects").json() == [{"name": "washer", "state": "ready"}]
+    listed = client.get("/objects").json()  # one call with each product's details and state
+    assert [(o["name"], o["id"], o["state"], o["display_name"], o["n_images"]) for o in listed] == [("washer", "washer", "ready", "Washer", 40)]
 
     bad = client.post("/objects/washer/predict", files={"file": ("b.png", png(part(rng, scratch=True)[0]))}).json()
     good = client.post("/objects/washer/predict", files={"file": ("g.png", png(part(rng)[0]))}).json()

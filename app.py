@@ -6,8 +6,10 @@ import base64
 import shutil
 import html
 import io
+import json
 import re
 import secrets
+import tempfile
 import threading
 import time
 import zipfile
@@ -171,12 +173,13 @@ def health():
 
 @app.get("/objects")
 def list_objects():
-    names = {p.stem for p in MODELS.glob("*.pt")} | set(jobs)
-    return [{"name": n, "state": jobs.get(n, {}).get("state", "ready")} for n in sorted(names)]
+    """Every product with its details and training state (one call for the whole library)."""
+    return [product_summary(pid) for pid in product_ids()]
 
 
 @app.post("/objects/{name}/train", status_code=202)
-def train(name: str, files: list[UploadFile] = File(...), backbone: str = Form("auto"), rotations: int = Form(1)):
+def train(name: str, files: list[UploadFile] = File(...), backbone: str = Form("auto"), rotations: int = Form(1),
+          mode: str = Form("replace")):
     """Upload good-part photos (images and/or a .zip). Training starts in the background.
     `backbone`: auto (default: times both on this computer, picks the most accurate that fits the PS limits),
     resnet18 (fast) or wide_resnet50 (bigger, slower). `rotations`: 1 = off, e.g. 8 for parts that can turn."""
@@ -187,23 +190,36 @@ def train(name: str, files: list[UploadFile] = File(...), backbone: str = Form("
         raise HTTPException(400, f"rotations must be between 1 and {MAX_ROTATIONS}")
     if backbone != "auto" and not (WEIGHTS_DIR / f"{backbone}.pth").exists():
         raise HTTPException(400, f"{backbone} weights missing; run `python download_weights.py {backbone}` once while online")
+    if mode not in ("replace", "add"):
+        raise HTTPException(400, "mode must be replace or add")
     if jobs.get(name, {}).get("state") in ("queued", "training"):
         raise HTTPException(409, f"'{name}' is already training")
     folder = DATA / name / "good"
     folder.mkdir(parents=True, exist_ok=True)
-    for old in folder.glob("*.png"):
-        old.unlink()  # a new upload replaces the previous training set for this object
-    n = 0
-    for img in images_from_uploads(files):
-        if n >= MAX_IMAGES:
-            raise HTTPException(413, f"more than {MAX_IMAGES} images")
-        img.save(folder / f"{n:04d}.png")  # our own file names, so uploaded names never touch the disk
-        n += 1
-    if n < MIN_IMAGES:
-        raise HTTPException(400, f"need at least {MIN_IMAGES} good images, got {n}")
+    kept = sorted(folder.glob("*.png")) if mode == "add" else []
+    staging = Path(tempfile.mkdtemp(dir=DATA, prefix=f".{name}-upload-"))  # new photos land here first
+    try:
+        added = 0
+        for img in images_from_uploads(files):
+            if len(kept) + added >= MAX_IMAGES:
+                raise HTTPException(413, f"more than {MAX_IMAGES} images")
+            img.save(staging / f"{added:04d}.png")
+            added += 1
+        n = len(kept) + added
+        if n < MIN_IMAGES:
+            raise HTTPException(400, f"need at least {MIN_IMAGES} good images, got {n}")
+        if mode == "replace":  # only now, with a valid upload in hand, the previous training set goes
+            for old in folder.glob("*.png"):
+                old.unlink()
+        start = len(kept)
+        for i, f in enumerate(sorted(staging.glob("*.png"))):  # our own file names, after the kept ones
+            shutil.move(str(f), folder / f"{start + i:04d}.png")
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
     jobs[name] = {"state": "queued", "n_images": n, "backbone": backbone, "rotations": rotations, "log": []}
     threading.Thread(target=run_training, args=(name, folder, backbone, rotations), daemon=True).start()
-    return {"name": name, "n_images": n, "backbone": backbone, "rotations": rotations, "state": "queued"}
+    return {"name": name, "n_images": n, "added": added, "mode": mode, "backbone": backbone, "rotations": rotations,
+            "state": "queued"}
 
 
 def model_numbers(name):
@@ -296,12 +312,14 @@ def delete_object(name: str, purge_log: bool = False, who: dict = Depends(can_ve
     if jobs.get(name, {}).get("state") in ("queued", "training"):
         raise HTTPException(409, f"'{name}' is training; wait for it to finish")
     path = MODELS / f"{name}.pt"
-    if not path.exists() and name not in jobs and not (DATA / name).exists():
+    if not path.exists() and name not in jobs and not (DATA / name).exists() and not details_path(name).exists():
         raise HTTPException(404, f"unknown object '{name}'")
     with state_lock:
         models.pop(name, None)
         jobs.pop(name, None)
     path.unlink(missing_ok=True)
+    details_path(name).unlink(missing_ok=True)
+    _model_cache.pop(name, None)
     shutil.rmtree(DATA / name, ignore_errors=True)
     removed = inspection_log.delete_object(name) if purge_log else 0
     return {"deleted": name, "log_rows_removed": removed, "by": who["username"]}
@@ -351,6 +369,229 @@ def feedback(name: str, file: UploadFile = File(...), inspection_id: int | None 
     if inspection_id is not None:
         inspection_log.mark_corrected(inspection_id, name)
     return {"learned": True, "new_label": m.predict(io.BytesIO(data))["label"]}
+
+
+# ---------- products: user-defined parts with a name, SKU and description (models/<id>.json) ----------
+
+MAX_IMPORT_MB = 600
+PRODUCT_FIELDS = ("display_name", "sku", "description")
+_model_cache: dict[str, tuple[float, dict]] = {}  # id -> (mtime, small facts read from the .pt), so /objects stays fast
+
+
+def product_id(display_name: str) -> str:
+    """'Bottle Cap 500ml' -> 'bottle_cap_500ml': lowercase, a-z 0-9 and _, at most 40 characters."""
+    pid = re.sub(r"[^a-z0-9]+", "_", display_name.lower()).strip("_")[:40].rstrip("_")
+    if not pid:
+        raise HTTPException(400, "the product name needs at least one letter or digit")
+    return pid
+
+
+def details_path(pid):
+    return MODELS / f"{pid}.json"
+
+
+def read_details(pid):
+    """Saved details, or defaults for products made before details existed (bottle -> 'Bottle')."""
+    p = details_path(pid)
+    d = {}
+    if p.exists():
+        try:
+            d = json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            d = {}
+    return {"id": pid, "display_name": d.get("display_name") or pid.replace("_", " ").replace("-", " ").title(),
+            "sku": d.get("sku") or "", "description": d.get("description") or "",
+            "created_at": d.get("created_at"), "created_by": d.get("created_by")}
+
+
+def write_details(pid, details):
+    MODELS.mkdir(exist_ok=True)
+    keep = {k: details.get(k) for k in ("display_name", "sku", "description", "created_at", "created_by")}
+    details_path(pid).write_text(json.dumps({"id": pid, **keep}, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+def product_ids():
+    return sorted({p.stem for p in MODELS.glob("*.pt")} | {p.stem for p in MODELS.glob("*.json")} | set(jobs))
+
+
+def model_facts(pid):
+    """backbone and trained_at of a saved model, read once per file version."""
+    path = MODELS / f"{pid}.pt"
+    if not path.exists():
+        return {}
+    mtime = path.stat().st_mtime
+    hit = _model_cache.get(pid)
+    if hit and hit[0] == mtime:
+        return hit[1]
+    with state_lock:
+        m = models.get(pid)
+    facts = {"backbone": m.fx.name if m else saved_backbone(path), "trained_at": mtime}
+    _model_cache[pid] = (mtime, facts)
+    return facts
+
+
+def product_summary(pid):
+    good = DATA / pid / "good"
+    job = jobs.get(pid, {})
+    state = job.get("state") or ("ready" if (MODELS / f"{pid}.pt").exists() else "new")
+    facts = model_facts(pid)
+    return {**read_details(pid), "name": pid, "state": state,
+            "n_images": len(list(good.glob("*.png"))) if good.exists() else 0,
+            "trained_at": job.get("trained_at") or facts.get("trained_at"),
+            "backbone": (job.get("backbone") if job.get("backbone") not in (None, "auto") else None) or facts.get("backbone")}
+
+
+def name_taken(display_name, except_id=None):
+    want = display_name.strip().casefold()
+    return any(read_details(pid)["display_name"].strip().casefold() == want for pid in product_ids() if pid != except_id)
+
+
+def clean_text(value, field, limit):
+    if value is None:
+        return None
+    value = str(value).strip()
+    if len(value) > limit:
+        raise HTTPException(400, f"{field} is longer than {limit} characters")
+    return value
+
+
+class ProductBody(BaseModel):
+    display_name: str
+    sku: str | None = None
+    description: str | None = None
+
+
+class ProductPatch(BaseModel):
+    display_name: str | None = None
+    sku: str | None = None
+    description: str | None = None
+
+
+def any_login(authorization: str | None = Header(None)):
+    return require_role(users, "operator", "inspector", "supervisor")(authorization)
+
+
+@app.post("/products", status_code=201)
+def create_product(body: ProductBody, who: dict = Depends(any_login)):
+    """New product (any signed-in role). The id comes from the name; 409 if the id or the name is taken."""
+    name = clean_text(body.display_name, "display_name", 80)
+    if not name:
+        raise HTTPException(400, "the product name is required")
+    pid = product_id(name)
+    if pid in product_ids() or (DATA / pid).exists():
+        raise HTTPException(409, f"a product with the id '{pid}' already exists")
+    if name_taken(name):
+        raise HTTPException(409, f"a product called '{name}' already exists")
+    details = {"display_name": name, "sku": clean_text(body.sku, "sku", 60) or "",
+               "description": clean_text(body.description, "description", 500) or "",
+               "created_at": time.time(), "created_by": who["username"]}
+    write_details(pid, details)
+    return product_summary(pid)
+
+
+@app.patch("/products/{pid}")
+def edit_product(pid: str, body: ProductPatch, who: dict = Depends(can_verify)):
+    """Edit a product's name, SKU or description (QC inspector or supervisor). The id never changes."""
+    check_name(pid)
+    if pid not in product_ids():
+        raise HTTPException(404, f"unknown product '{pid}'")
+    details = read_details(pid)
+    if body.display_name is not None:
+        name = clean_text(body.display_name, "display_name", 80)
+        if not name:
+            raise HTTPException(400, "the product name can't be empty")
+        if name_taken(name, except_id=pid):
+            raise HTTPException(409, f"a product called '{name}' already exists")
+        details["display_name"] = name
+    if body.sku is not None:
+        details["sku"] = clean_text(body.sku, "sku", 60)
+    if body.description is not None:
+        details["description"] = clean_text(body.description, "description", 500)
+    write_details(pid, details)
+    return product_summary(pid)
+
+
+@app.get("/objects/{pid}/export.zip")
+def export_product(pid: str, who: dict = Depends(can_verify)):
+    """One zip with everything needed to move a product to another laptop: model.pt, product.json, good/*.png."""
+    check_name(pid)
+    path = MODELS / f"{pid}.pt"
+    if not path.exists():
+        raise HTTPException(404, f"'{pid}' has no trained model to export")
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        z.write(path, "model.pt")
+        z.writestr("product.json", json.dumps(read_details(pid), indent=2, ensure_ascii=False))
+        for img in list_images(DATA / pid / "good") if (DATA / pid / "good").is_dir() else []:
+            if re.fullmatch(r"\d{4}\.png", img.name):
+                z.write(img, f"good/{img.name}")
+    return Response(buf.getvalue(), media_type="application/zip",
+                    headers={"Content-Disposition": f'attachment; filename="{pid}.zip"'})
+
+
+@app.post("/objects/import", status_code=201)
+def import_product(file: UploadFile = File(...), overwrite: bool = False, who: dict = Depends(can_verify)):
+    """A zip made by export.zip. Only model.pt, product.json and good/NNNN.png are accepted; 409 if the id exists."""
+    data = file.file.read(MAX_IMPORT_MB * 2**20 + 1)
+    if len(data) > MAX_IMPORT_MB * 2**20:
+        raise HTTPException(413, f"the zip is larger than {MAX_IMPORT_MB} MB")
+    try:
+        z = zipfile.ZipFile(io.BytesIO(data))
+    except zipfile.BadZipFile:
+        raise HTTPException(400, "not a zip file")
+    infos = [i for i in z.infolist() if not i.is_dir()]
+    names = [i.filename for i in infos]
+    photo_re = re.compile(r"good/\d{4}\.png")
+    bad = [n for n in names if n not in ("model.pt", "product.json") and not photo_re.fullmatch(n)]
+    if bad or len(names) != len(set(names)):
+        raise HTTPException(400, f"unexpected file in the zip: {(bad or names)[0]!r} (only model.pt, product.json, good/NNNN.png)")
+    if "model.pt" not in names or "product.json" not in names:
+        raise HTTPException(400, "the zip needs model.pt and product.json")
+    if len(names) > MAX_IMAGES + 2 or sum(i.file_size for i in infos) > MAX_IMPORT_MB * 2**20:
+        raise HTTPException(413, "the zip unpacks to too many files or too many bytes")
+    try:
+        details = json.loads(z.read("product.json").decode("utf-8"))
+    except (ValueError, UnicodeDecodeError):
+        raise HTTPException(400, "product.json is not valid JSON")
+    pid = details.get("id") if isinstance(details, dict) else None
+    if not isinstance(pid, str) or not NAME_RE.fullmatch(pid):
+        raise HTTPException(400, "product.json has no valid id")
+    exists = pid in product_ids() or (DATA / pid).exists()
+    if exists and not overwrite:
+        raise HTTPException(409, f"'{pid}' already exists; import with ?overwrite=true to replace it")
+    if jobs.get(pid, {}).get("state") in ("queued", "training"):
+        raise HTTPException(409, f"'{pid}' is training; wait for it to finish")
+    model_bytes = z.read("model.pt")
+    try:  # weights_only: tensors, numbers and strings only, never code
+        saved = torch.load(io.BytesIO(model_bytes), weights_only=True)
+        assert isinstance(saved, dict) and {"bank", "thr", "low", "high"} <= set(saved)
+    except Exception:
+        raise HTTPException(400, "model.pt is not a Netrix IQ model")
+    photos = []
+    for n in sorted(x for x in names if photo_re.fullmatch(x)):
+        raw = z.read(n)
+        try:
+            Image.open(io.BytesIO(raw)).verify()
+        except Exception:
+            raise HTTPException(400, f"{n} is not a valid PNG")
+        photos.append((n.split("/", 1)[1], raw))
+    name = str(details.get("display_name") or pid)[:80]
+    if name_taken(name, except_id=pid):
+        raise HTTPException(409, f"a different product is already called '{name}'")
+    with state_lock:
+        models.pop(pid, None)
+        jobs.pop(pid, None)
+    _model_cache.pop(pid, None)
+    MODELS.mkdir(exist_ok=True)
+    good = DATA / pid / "good"
+    shutil.rmtree(good, ignore_errors=True)
+    good.mkdir(parents=True)
+    for fname, raw in photos:
+        (good / fname).write_bytes(raw)
+    (MODELS / f"{pid}.pt").write_bytes(model_bytes)
+    write_details(pid, {**details, "display_name": name, "sku": str(details.get("sku") or "")[:60],
+                        "description": str(details.get("description") or "")[:500]})
+    return {**product_summary(pid), "imported_by": who["username"], "photos": len(photos)}
 
 
 # ---------- "enough photos?" meter for webcam capture ----------

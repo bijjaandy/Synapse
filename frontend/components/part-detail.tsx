@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { ImageOff, X } from "lucide-react";
 import { API_URL } from "@/lib/api";
@@ -70,7 +71,11 @@ export function PartDetailPanel({ id, name, open, onClose }: { id: string; name:
     ["Last inspected", when(stats.last)],
   ] : [];
 
-  return <AnimatePresence>{open && <motion.div className="glass-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  if (!mounted) return null;
+  // portal to <body>: a transformed parent would otherwise clip the fixed backdrop and its stacking
+  return createPortal(<AnimatePresence>{open && <motion.div className="glass-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: reduced ? 0 : 0.18 }}>
     <motion.div ref={dialog} className="glass-panel" role="dialog" aria-modal="true" aria-labelledby="glass-title"
       initial={reduced ? false : { opacity: 0, scale: 0.94, y: 8 }} animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -97,5 +102,5 @@ export function PartDetailPanel({ id, name, open, onClose }: { id: string; name:
         </div>
       </div>
     </motion.div>
-  </motion.div>}</AnimatePresence>;
+  </motion.div>}</AnimatePresence>, document.body);
 }

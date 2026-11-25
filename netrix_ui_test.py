@@ -231,9 +231,9 @@ def main():
                   "| band", rows.get("Unsure band"), "| photo shown:", page.locator(".glass-main img").count() + page.locator(".glass-placeholder").count() > 0,
                   "| counts:", page.inner_text(".glass-counts").replace("\n", " "))
             page.screenshot(path=str(SHOTS / "glass_panel.png"))
-            page.keyboard.press("Escape"); page.wait_for_timeout(500)
+            page.keyboard.press("Escape"); page.wait_for_selector(".glass-panel", state="detached", timeout=5000)  # after its closing animation
             print("after Esc: panel", page.locator(".glass-panel").count(), "| focus back on card:", page.evaluate("document.activeElement?.dataset?.detail === '1'"))
-            card.hover(); page.wait_for_timeout(1200)
+            page.mouse.move(5, 5); page.wait_for_timeout(200); card.hover(); page.wait_for_timeout(1200)  # enter from outside
             print("hover opens:", page.locator(".glass-panel").count())
             page.mouse.click(5, 5); page.wait_for_timeout(500)
             print("click outside closes:", page.locator(".glass-panel").count() == 0)
