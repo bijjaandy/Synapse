@@ -276,6 +276,7 @@ export default function InspectionLab() {
   const [dragging, setDragging] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [inspectionError, setInspectionError] = useState<string | null>(null);
+  const [untrainedPart, setUntrainedPart] = useState<string | null>(null);   // /predict said this part has no model
   const [trainingError, setTrainingError] = useState<string | null>(null);
   const trainInput = useRef<HTMLInputElement>(null);
   const inspectInput = useRef<HTMLInputElement>(null);
@@ -343,9 +344,12 @@ export default function InspectionLab() {
     setInspecting(true);
     setInspection(null);
     setInspectionError(null);
+    setUntrainedPart(null);
     setFeedbackDone(null);
     setInspectionFile(file);
     try {
+      // known to have no model: say so without a request that can only 404 (the 404 path below still covers a stale list)
+      if (objectStatuses.find((s) => s.objectId === selectedObject)?.status === "Not trained") throw new Error(`no trained model for '${selectedObject}'`);
       const result = await inspect(selectedObject, file);
       setInspection(result);
       setInspectedObject(selectedObject);
@@ -353,10 +357,19 @@ export default function InspectionLab() {
       mutateShift();
       mutateLoggedParts();
     } catch (cause) {
-      setInspectionError(cause instanceof Error ? cause.message : "Inspection could not run. Try another photo.");
+      const message = cause instanceof Error ? cause.message : "Inspection could not run. Try another photo.";
+      if (message.startsWith("no trained model for")) setUntrainedPart(selectedObject);
+      setInspectionError(message);
     } finally {
       setInspecting(false);
     }
+  }
+
+  function goTrain(part: string) {
+    setSelectedObject(part);
+    setUntrainedPart(null);
+    setInspectionError(null);
+    document.getElementById("train")?.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "start" });
   }
 
   async function confirmGood() {
@@ -404,7 +417,7 @@ export default function InspectionLab() {
       <div className="inspect-workspace">
         <div className="inspect-controls">
           <div className="control-heading"><span className="panel-index">B</span><div><h3>{pageCopy.inspectionInput}</h3><p>{pageCopy.inspectionInputDescription}</p></div></div>
-          <label className="select-label" htmlFor="object-select"><Eyebrow>{pageCopy.objectSelectLabel}</Eyebrow><div className="select-wrap"><select id="object-select" value={selectedObject} onChange={(event) => setSelectedObject(event.target.value)}>{[...objectCategories.map((o) => ({ id: o.id as string, name: o.name as string })), ...objectStatuses.filter((s) => !objectCategories.some((o) => o.id === s.objectId)).map((s) => ({ id: s.objectId, name: s.objectName })), ...(objectCategories.some((o) => o.id === selectedObject) || objectStatuses.some((s) => s.objectId === selectedObject) ? [] : [{ id: selectedObject, name: selectedObject }])].map((object) => { const st = objectStatuses.find((s) => s.objectId === object.id); return <option key={object.id} value={object.id}>{object.name}{st?.status === "Trained" ? " (trained)" : ""}</option>; })}</select><ChevronDown size={15} /></div></label>
+          <label className="select-label" htmlFor="object-select"><Eyebrow>{pageCopy.objectSelectLabel}</Eyebrow><div className="select-wrap"><select id="object-select" value={selectedObject} onChange={(event) => setSelectedObject(event.target.value)}>{[...objectCategories.map((o) => ({ id: o.id as string, name: o.name as string })), ...objectStatuses.filter((s) => !objectCategories.some((o) => o.id === s.objectId)).map((s) => ({ id: s.objectId, name: s.objectName })), ...(objectCategories.some((o) => o.id === selectedObject) || objectStatuses.some((s) => s.objectId === selectedObject) ? [] : [{ id: selectedObject, name: selectedObject }])].map((object) => { const st = objectStatuses.find((s) => s.objectId === object.id); return <option key={object.id} value={object.id}>{object.name}{!objectStatuses.length ? "" : st?.status === "Trained" ? " (trained)" : st?.status === "Training" ? " (training)" : " (not trained)"}</option>; })}</select><ChevronDown size={15} /></div></label>
           <input ref={inspectInput} className="sr-only" type="file" accept="image/*" onChange={(event) => { const file = event.target.files?.[0]; if (file) runInspection(file); event.target.value = ""; }} />
           <button className="inspect-upload" onClick={() => inspectInput.current?.click()} disabled={inspecting}><FileImage size={16} /><span><strong>{inspectionFile ? inspectionFile.name : pageCopy.uploadPhoto}</strong><small>{pageCopy.imageFormats}</small></span><Plus size={16} /></button>
           <div className="sample-choice"><Eyebrow>{pageCopy.sampleImageEyebrow}</Eyebrow><WebcamCapture mode="inspect" disabled={inspecting} onInspect={(file) => runInspection(file)} /></div>
@@ -413,7 +426,7 @@ export default function InspectionLab() {
         </div>
         <div className="result-panel">
           <div className="result-header"><div><Eyebrow>{pageCopy.inspectionResult}</Eyebrow><span className={`${mono} result-id`}>{inspection?.inspectionId ? `ID #${String(inspection.inspectionId).padStart(4, "0")} · ${inspection.backbone}${inspection.rotations > 1 ? ` · ${inspection.rotations} angles` : ""}` : pageCopy.resultIdPending}</span></div><span className="result-demo-tag">{pageCopy.demoOutput}</span></div>
-          {inspecting ? <div className="result-loading" role="status"><LoaderCircle size={26} /><span>{pageCopy.resultComparing}</span></div> : inspectionError ? <div className="result-error" role="alert"><CircleHelp size={18} /><p>{inspectionError}</p></div> : <>
+          {inspecting ? <div className="result-loading" role="status"><LoaderCircle size={26} /><span>{pageCopy.resultComparing}</span></div> : untrainedPart ? <div className="result-error result-loading" role="alert"><CircleHelp size={26} /><p className="result-explanation">{partName(untrainedPart)} isn't trained yet. Train it first with good photos.</p><button type="button" className="layers-toggle" onClick={() => goTrain(untrainedPart)}>Go to Train <ArrowRight size={14} /></button></div> : inspectionError ? <div className="result-error" role="alert"><CircleHelp size={18} /><p>{inspectionError}</p></div> : <>
             <div className="result-summary"><motion.div key={inspection?.inspectionId ?? "waiting"} className={`verdict ${verdictClass}`} initial={reducedMotion ? false : { opacity: 0, scale: 1.25, rotate: -3 }} animate={{ opacity: 1, scale: 1, rotate: 0 }} transition={reducedMotion ? { duration: 0 } : { type: "spring", bounce: 0.4, duration: 0.6, delay: view === "3d" && inspection ? 1.6 : 0 }}><span className="verdict-icon">{inspection?.verdict === "Good" ? <Check size={20} /> : inspection ? <TriangleAlert size={20} /> : <Activity size={20} />}</span><div><Eyebrow>{inspection ? pageCopy.classification : pageCopy.currentStatus}</Eyebrow><strong>{inspection ? VERDICT_TEXT[inspection.verdict] : pageCopy.resultWaiting}</strong></div></motion.div>
               <div className="result-metrics"><div><Eyebrow>{pageCopy.anomalyScore}</Eyebrow><AnimatedScore value={inspection?.score ?? null} /></div><div><Eyebrow>{pageCopy.latency}</Eyebrow><strong>{inspection ? `${inspection.latencyMs}` : "—"}<small> ms</small></strong></div>{inspection && <span className={`latency-target-badge ${inspection.latencyMs < 1000 ? "pass" : "fail"}`}>{inspection.latencyMs < 1000 ? <><Check size={13} /> {pageCopy.latencyPass}</> : <><X size={13} /> {pageCopy.latencyFail}</>}</span>}</div></div>
             <div className="score-gauge" role="img" aria-label={inspection ? `Anomaly score ${inspection.score.toFixed(2)}, line at ${inspection.threshold.toFixed(2)}` : "Anomaly score not available, awaiting image"}><div className="gauge-labels"><span>0.00</span><span>{pageCopy.decisionThreshold} <b>{inspection?.threshold.toFixed(2) ?? "—"}</b></span><span>{inspection ? (2 * inspection.threshold).toFixed(2) : "2× LINE"}</span></div><div className="gauge-track live-gauge">{inspection && <span className="gauge-band" style={{ left: `${(inspection.unsureBand[0] / (2 * inspection.threshold)) * 100}%`, width: `${((inspection.unsureBand[1] - inspection.unsureBand[0]) / (2 * inspection.threshold)) * 100}%` }} />}<span className="gauge-threshold" style={{ left: "50%" }} /><motion.span className={`gauge-value ${inspection?.verdict === "Good" ? "pass" : ""}`} style={{ scaleX: scoreProgress }} /><motion.span className="gauge-needle" style={{ left: scoreNeedle }} aria-hidden="true" /></div></div>
@@ -450,6 +463,8 @@ export default function InspectionLab() {
     <footer className="footer"><a href="#top" className="brand footer-brand"><span className="brand-mark"><ScanLine size={17} /></span><span>{projectName}<small>{pageCopy.brandDescriptor}</small></span></a><div className="footer-project-meta"><span className={mono}>{pageCopy.teamPrefix} · {teamNamePlaceholder}</span><span className={mono}>{hackathonName}</span></div><span className={`${mono} footer-version`}>{pageCopy.demoVersion}</span></footer>
   </main>;
 }
+
+const partName = (id: string) => objectCategories.find((o) => o.id === id)?.name ?? id;
 
 /** "Auto: wide_resnet50 ~240 s / 180 ms, too slow. resnet18 ~40 s / 60 ms, chosen." */
 function autoSummary(report: AutoEstimate[], chosen: string | null) {

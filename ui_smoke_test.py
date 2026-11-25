@@ -93,6 +93,23 @@ def main():
             page.wait_for_function("document.querySelector('.topbar-demo')?.textContent !== 'CHECKING SERVER'", timeout=15000)
             print("badge:", page.inner_text(".topbar-demo"))
 
+        def untrained():
+            page.wait_for_function("[...document.querySelectorAll('#object-select option')].some(o => o.text.includes('(not trained)'))", timeout=15000)
+            options = page.locator("#object-select option").all()
+            target = next(o for o in options if "(not trained)" in o.inner_text())
+            part_id, label = target.get_attribute("value"), target.inner_text()
+            print("dropdown:", [o.inner_text() for o in options][:4], "...")
+            page.select_option("#object-select", part_id)
+            page.set_input_files("#inspect input[type=file]", str(tmp / "inspect_good.png"))
+            page.wait_for_selector(".result-error", timeout=15000)
+            print("message:", page.inner_text(".result-error").replace(chr(10), " | "))
+            page.locator(".result-panel").screenshot(path=str(SHOTS / "untrained.png"))
+            page.click(".result-error >> text=Go to Train")
+            page.wait_for_timeout(1500)
+            in_view = page.evaluate("(() => { const r = document.getElementById('train').getBoundingClientRect(); return r.top < innerHeight && r.bottom > 0; })()")
+            tile = page.locator(".object-tile.active").inner_text().replace(chr(10), " ") if page.locator(".object-tile.active").count() else "-"
+            print(f"go to train: #train in view={in_view}, selected tile={tile!r} (was {label!r}), message gone={page.locator('.result-error').count() == 0}")
+
         def train():
             page.fill("#custom-part", PART)
             page.click(".custom-part button")
@@ -185,7 +202,7 @@ def main():
             print("meter:", " | ".join(page.inner_text(".cam-meter").split("\n")))
             page.locator(".live-cam-train").screenshot(path=str(SHOTS / "webcam_meter.png"))
 
-        for name, fn in [("a. top bar badge", badge), ("b. train", train), ("c. inspect", inspect),
+        for name, fn in [("a. top bar badge", badge), ("a2. untrained part", untrained), ("b. train", train), ("c. inspect", inspect),
                          ("d. feedback", feedback), ("e. 2D view", view2d), ("f. evaluation", evaluation),
                          ("g. objects tab", objects), ("h. history", history), ("h2. history part filter + time range", history_filters),
                          ("k. auto model summary", auto_model), ("i. webcam", webcam)]:
