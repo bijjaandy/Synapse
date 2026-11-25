@@ -9,29 +9,41 @@ Learns from photos of good parts only. Never sees a real defect, even to set the
     pip install -r requirements.txt
     python download_weights.py resnet18 wide_resnet50   # saves weights/<backbone>.pth; after this no internet is needed
     python test_inspector.py                 # ML self-check, should print SELF-TEST PASSED
-    pytest -q                                # API tests
+    pytest -q                                # API tests + feature tests (rotation, retake, pins, auto model)
 
 ## Web UI
     uvicorn app:app --port 8000              # then open http://localhost:8000/   (API docs at /docs)
 
-One page (`static/index.html`, plain HTML + JS, no build step, works offline):
-1. **Object**: pick a trained object, or type a new name and press "Use this name".
-2. **Train**: choose good photos and/or a .zip, pick a backbone (resnet18 = fast default, wide_resnet50 = more
-   accurate, ~4x slower), press Train. State, backbone, training log and train time update every second.
-3. **Inspect**: drop or choose one photo. Shows photo + heatmap, a big GOOD / DEFECTIVE / UNSURE label,
-   score, threshold, unsure band and time in ms. "This was actually good" teaches the model instantly.
-4. **Webcam**: "Use webcam" -> "Capture good sample" (or burst of 10) -> "Train on captured" -> "Inspect now".
-   The browser only allows the webcam on `http://localhost` or https, so open the page on the laptop itself.
+One page (`static/index.html` + `static/stage3d.js`, plain HTML + JS, no build step). Three.js, anime.js, Motion
+and the Barlow fonts are bundled in `static/vendor/` (licences in `LICENSES.txt`), so it works with no internet.
 
-### Live demo script (about 3 minutes)
+1. **Part**: pick a trained part, or type a new name.
+2. **Teach it good parts**: good photos and/or a .zip. Model: **auto** (default) times both models on this laptop
+   and picks the most accurate one that stays under half the PS limits; or force fast / most accurate.
+   Tick "Part can lie at any angle" for screws, nuts and similar: each photo is also checked at 8 angles.
+3. **Inspect a photo**: drop or choose one. The **3D view** turns the photo into a surface: a scan sweeps across,
+   unusual areas rise and glow red, and numbered pins drop onto the worst spots. Drag to rotate, scroll to zoom,
+   "Flat view" shows photo + heatmap. Below: score against the line (amber band = sent to a person), where the
+   defects are, time in ms. "This was actually good" teaches the model instantly and marks the log entry.
+   **RETAKE PHOTO** appears when the photo itself is the problem (too dark/bright, blurry, or most of the
+   picture looks different), instead of a false DEFECTIVE.
+4. **Webcam**: Start webcam, capture good samples. The **meter** shows when new photos stop teaching the model
+   anything new (12+ photos and a flat line). Then Train on captured, Inspect now.
+5. **This shift**: counts for the last 12 hours, CSV download and a printable shift report.
+
+The 3D view is a relief made from one photo plus the model's scores. It shows *where* the model sees a problem;
+it is not a 3D scan of the part's real shape. The webcam only works on `http://localhost` (or https).
+
+### Live demo script (about 4 minutes)
 1. Start the server, open http://localhost:8000/.
-2. New object `bottle`, upload `mvtec_ad/bottle/train/good` as a .zip, press Train; point at the log and
-   the train time (well under 10 minutes).
-3. Drop `test/good/000.png` -> green GOOD. Drop a `test/broken_large` photo -> red DEFECTIVE, heatmap on the crack.
-   Point at the time in ms (under 1 second).
-4. Find an UNSURE or false alarm on a good photo, press "This was actually good" -> label changes, no retraining.
-5. Webcam: new object (e.g. `mug`), capture ~20 good samples while turning the object slightly, Train on captured,
-   then Inspect now with a sticker or scratch added.
+2. New part `bottle`, upload `mvtec_ad/bottle/train/good` as a .zip, Model = auto, Train. Point at the log:
+   it timed both models on this laptop and chose one.
+3. Drop a `test/good` photo: GOOD. Drop a `test/broken_large` photo: the scan sweeps, the crack rises red,
+   a pin lands on it, DEFECTIVE. Rotate the view. Point at the time in ms.
+4. Drop a very dark or blurry photo: RETAKE PHOTO with the reason, not a false alarm.
+5. On a false alarm press "This was actually good": label changes, no retraining.
+6. Webcam: new part (e.g. `mug`), capture until the meter says Enough, Train, Inspect with a sticker on it.
+7. Open the shift report: every check is logged with its heatmap.
 
 ## Backend
 
@@ -39,12 +51,16 @@ One page (`static/index.html`, plain HTML + JS, no build step, works offline):
 |---|---|---|
 | GET  | /health | server is up |
 | GET  | /objects | trained objects and their state |
-| POST | /objects/{name}/train | upload good photos (images and/or a .zip, field `files`); optional form field `backbone` (`resnet18` default, or `wide_resnet50`); trains in background, returns 202 |
-| GET  | /objects/{name}/status | queued / training / ready / failed, with backbone and training log |
-| POST | /objects/{name}/predict | field `file`; returns label (good/defective/unsure), score, ms, heatmap PNG as base64 |
-| POST | /objects/{name}/feedback | field `file`; operator marks a false alarm as good, learned instantly |
+| POST | /objects/{name}/train | field `files` (images and/or .zip); optional `backbone` (`auto` default, `resnet18`, `wide_resnet50`) and `rotations` (1-8); trains in background, returns 202 |
+| GET  | /objects/{name}/status | queued / training / ready / failed, backbone (with the auto timing report) and training log |
+| POST | /objects/{name}/predict | field `file`; label (good/defective/unsure/retake), score, ms, `reasons`, `regions` (pin positions), `grid` (scores for the 3D view), `inspection_id`, heatmap PNG as base64 |
+| POST | /objects/{name}/feedback | field `file`, optional `inspection_id`; operator marks a false alarm as good, learned instantly |
+| POST | /meter, /meter/{id} | start a capture session; send each captured photo to get the "enough samples?" meter |
+| GET  | /log, /log.csv, /log/{id}/heatmap.png | inspection log (filters `object`, `hours`) |
+| GET  | /report, /report.html | shift summary as JSON, or a printable page |
 
-Object names: lowercase letters, digits, `_` or `-`. Models are saved in `models/`, uploaded photos in `data/`.
+Object names: lowercase letters, digits, `_` or `-`. Models are saved in `models/`, uploaded photos in `data/`,
+the inspection log and its heatmaps in `logs/`.
 
 ## MVTec AD (the 15 objects)
 Download MVTec AD and extract it so you have mvtec_ad/bottle/train/good, mvtec_ad/bottle/test/..., etc.
@@ -75,5 +91,15 @@ slowest single image in ms, and flags any category over the 10-minute or 1-secon
    those good scores. No defect images, real or fake, are used for it (this raised MVTec accuracy 0.70 -> 0.81).
    Optional self-check: fake defects (cut-paste, scratch, stain) are made from the held-out images and the
    log reports what share of them the threshold catches.
+   Small sets (under 40 photos, e.g. a webcam session): instead of holding out 20%, every photo is scored by a
+   memory built without it (4 folds), and the final memory uses all photos with at least 2000 patches.
+   On 12-photo toy sets this cut false alarms from 18% to 2% with the same defect catch rate.
 5. Output is good / defective / unsure (unsure = send to a human). The unsure band is narrow: threshold
    plus/minus `band` x the spread of good validation scores.
+6. Retake check: brightness and sharpness are compared with the training photos, and if more than half of the
+   photo scores above the threshold the problem is the whole picture (wrong object, angle, lighting), not a
+   local defect.
+7. Rotation (optional): each photo is also scored at N evenly spaced angles and the best-matching angle wins;
+   the heatmap is turned back to line up with the original photo.
+8. Auto model: on this computer, times feature extraction, memory search and memory building for each model
+   with the real photo count, and picks the most accurate one estimated under half the PS limits.

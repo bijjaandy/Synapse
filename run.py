@@ -4,7 +4,8 @@
   python run.py predict --image photo.png                  --model bottle.pt --heatmap out.png
   python run.py feedback --image false_alarm.png           --model bottle.pt
   python run.py bench   --root mvtec_ad                    (all categories -> results.csv)
-Options: --backbone resnet18|wide_resnet50  --coreset 0.01  --band 0.5  --q 0.95  --selfcheck  --only screw,pill  --out results.csv
+Options: --backbone resnet18|wide_resnet50|auto  --coreset 0.01  --band 0.5  --q 0.95  --rotations 1
+         --selfcheck  --only screw,pill  --out results.csv
 Data folder follows MVTec AD layout: train/good, test/<type>, ground_truth/<type>.
 """
 import argparse
@@ -16,7 +17,7 @@ import numpy as np
 from PIL import Image
 from sklearn.metrics import roc_auc_score
 
-from inspector import SIZE, FeatureExtractor, Inspector, list_images, overlay
+from inspector import SIZE, FeatureExtractor, Inspector, choose_backbone, list_images, overlay
 
 
 def evaluate(model, data):
@@ -29,12 +30,13 @@ def evaluate(model, data):
     y = np.array([r[1] for r in rows])
 
     t0 = time.perf_counter()
-    scores, maps, worst_ms = [], [], 0.0
+    scores, maps, worst_ms, retakes = [], [], 0.0, 0
     for p in paths:
         r = model.predict(p)
         scores.append(r["score"])
         maps.append(r["map"])
         worst_ms = max(worst_ms, r["ms"])
+        retakes += r["label"] == "retake"
     ms = (time.perf_counter() - t0) * 1000 / len(paths)
     scores = np.array(scores)
     labels = np.array([model.decide(s) for s in scores])
@@ -46,7 +48,8 @@ def evaluate(model, data):
            "accuracy": (hard == y).mean(),          # what a hidden test that needs a yes/no answer would see
            "defect_recall": hard[y].mean(),         # share of defective parts caught
            "false_alarm_rate": hard[~y].mean(),     # share of good parts wrongly rejected
-           "accuracy_when_sure": acc, "unsure_rate": 1 - sure.mean(), "ms_per_image": ms, "worst_ms": worst_ms}
+           "accuracy_when_sure": acc, "unsure_rate": 1 - sure.mean(), "ms_per_image": ms, "worst_ms": worst_ms,
+           "retake_rate": retakes / len(paths)}  # MVTec photos are all well taken, so this should stay near 0
 
     gt_dir = Path(data) / "ground_truth"
     if gt_dir.exists():
@@ -110,17 +113,24 @@ def main():
     ap.add_argument("--image")
     ap.add_argument("--heatmap")
     ap.add_argument("--coreset", type=float, default=0.01)
-    ap.add_argument("--backbone", default="resnet18", choices=["resnet18", "wide_resnet50"])
+    ap.add_argument("--backbone", default="resnet18", choices=["resnet18", "wide_resnet50", "auto"],
+                    help="auto = time both on this computer and pick the most accurate that fits the limits")
     ap.add_argument("--band", type=float, default=0.5, help="unsure band half-width in std-devs; 0 = always decide")
     ap.add_argument("--q", type=float, default=0.95, help="threshold quantile of held-out good scores")
-    ap.add_argument("--selfcheck", action="store_true", help="also score fake defects (slower)")
+    ap.add_argument("--rotations", type=int, default=1, help="angles to try per photo, e.g. 8 for parts that turn")
+    ap.add_argument("--selfcheck", action="store_true", help="also score fake defects during training (slower)")
     ap.add_argument("--only", help="comma-separated categories for bench")
     ap.add_argument("--out", default="results.csv")
     a = ap.parse_args()
 
     if a.cmd == "train":
-        m = Inspector(backbone=a.backbone, band=a.band, q=a.q).fit(
-            list_images(Path(a.data) / "train" / "good"), coreset_ratio=a.coreset, fakes_per_img=int(a.selfcheck))
+        good = list_images(Path(a.data) / "train" / "good")
+        backbone = a.backbone
+        if backbone == "auto":
+            backbone, _ = choose_backbone(len(good), a.rotations, a.coreset)
+            print("auto-selected", backbone)
+        m = Inspector(backbone=backbone, band=a.band, q=a.q, rotations=a.rotations).fit(
+            good, coreset_ratio=a.coreset, fakes_per_img=int(a.selfcheck))
         m.save(a.model)
     elif a.cmd == "eval":
         for k, v in evaluate(Inspector.load(a.model), a.data).items():
@@ -129,6 +139,8 @@ def main():
         m = Inspector.load(a.model)
         r = m.predict(a.image)
         print(f"{r['label'].upper()}  score={r['score']:.3f}  ({r['ms']:.0f} ms)")
+        for reason in r["reasons"]:
+            print("  retake:", reason)
         if a.heatmap:
             overlay(a.image, r["map"], a.heatmap, vmax=m.high * 1.5)
     elif a.cmd == "feedback":
@@ -137,6 +149,8 @@ def main():
         m.save(a.model)
         print("learned as good; new prediction:", m.predict(a.image)["label"])
     elif a.cmd == "bench":
+        if a.backbone == "auto":
+            raise SystemExit("bench needs a fixed --backbone so results are comparable")
         fx = FeatureExtractor(a.backbone)  # load backbone once for all 15 categories
         cats = sorted(p for p in Path(a.root).iterdir() if (p / "train" / "good").is_dir())
         if a.only:
@@ -152,8 +166,8 @@ def main():
             w = None
             for c in cats:
                 t0 = time.perf_counter()
-                m = Inspector(fx, band=a.band, q=a.q).fit(list_images(c / "train" / "good"), coreset_ratio=a.coreset,
-                                                          fakes_per_img=int(a.selfcheck))
+                m = Inspector(fx, band=a.band, q=a.q, rotations=a.rotations).fit(
+                    list_images(c / "train" / "good"), coreset_ratio=a.coreset, fakes_per_img=int(a.selfcheck))
                 row = {"category": c.name, "train_s": time.perf_counter() - t0, **evaluate(m, c)}
                 print({k: round(v, 4) if isinstance(v, float) else v for k, v in row.items()})
                 if w is None:
@@ -163,7 +177,7 @@ def main():
                 f.flush()  # keep partial results if a long run is interrupted
                 rows.append(row)
         print("saved", a.out)
-        summarize(rows, f"({a.backbone}, coreset {a.coreset}, band {a.band}, q {a.q}"
+        summarize(rows, f"({a.backbone}, coreset {a.coreset}, band {a.band}, q {a.q}, rotations {a.rotations}"
                         f"{', selfcheck' if a.selfcheck else ''}) ")
 
 
