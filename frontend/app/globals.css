@@ -1668,3 +1668,6 @@ body { font-family:var(--font-ui); font-size:16px; }
 .train-head .status-chip.retrain { background: #E0B341 !important; }
 .train-head .status-chip.failed { background: #e48a5c !important; }
 .lx-verdict-icon { font-size: 1.5rem; }   /* large text: cream on defect orange passes AA at this size */
+
+/* App views already sit in a centred 1180px shell, so the viewport-based gutter must not pad them again (it squeezed Inspect to ~400px at 1920 wide). */
+.lab-view { --content-gutter: 0px; }
