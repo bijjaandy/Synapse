@@ -66,19 +66,21 @@ def main():
 
         def landing():
             page.goto(URL, wait_until="networkidle")
-            page.wait_for_timeout(1500)
-            print("canvas:", page.locator(".pipeline-canvas canvas").count(), "| h1:", page.inner_text(".pipeline-text h1"))
+            page.wait_for_timeout(3500)   # the intro logo (1.2 s) and the typed headline
+            print("hero canvas:", page.locator(".lx-hero-3d canvas").count(), "| pipeline canvas:", page.locator(".pipeline-canvas canvas").count(),
+                  "| h1:", page.get_attribute(".lx-hero-title", "aria-label"), "| node labels:", page.locator(".hero3d-label").all_inner_texts())
             page.screenshot(path=str(SHOTS / "landing_0.png"))
+            base = page.evaluate("document.querySelector('.pipeline').getBoundingClientRect().top + window.scrollY")
             total = page.evaluate("document.querySelector('.pipeline').offsetHeight - innerHeight")
             for s in range(1, 7):
-                page.evaluate(f"window.scrollTo(0, {total} * {(s + 0.5) / 7})")
+                page.evaluate(f"window.scrollTo(0, {base} + {total} * {(s + 0.5) / 7})")
                 page.wait_for_timeout(900)
                 print(f"stage {s}:", page.inner_text(".pipeline-kicker"), "|", page.inner_text(".pipeline-text h2"))
                 page.screenshot(path=str(SHOTS / f"landing_{s}.png"))
-            page.locator("#workflow").scroll_into_view_if_needed()
-            page.wait_for_timeout(800)
-            page.screenshot(path=str(SHOTS / "landing_workflow.png"))
-            print("workflow steps:", page.locator(".workflow li").count(), "| roles:", page.locator(".who-grid article").count())
+            page.locator("#checks").scroll_into_view_if_needed(); page.wait_for_timeout(800)
+            print("sections: checks", page.locator(".lx-check").count(), "| chips", page.locator(".lx-chip").count(), "| steps", page.locator(".lx-steps li").count(),
+                  "| stats", page.locator(".lx-stat").count(), "| footer links", page.locator(".lx-footer nav a").count())
+            page.screenshot(path=str(SHOTS / "landing_checks.png"))
 
         def guard():
             page.context.clear_cookies()

@@ -60,12 +60,11 @@ export class PipelineScene {
     // background: soft radial gradient, cream centre -> mist -> deep forest at the edges (screen space)
     this.bg = canvasTexture((g, w, h) => {
       const grad = g.createRadialGradient(w * 0.62, h * 0.45, 0, w * 0.62, h * 0.45, w * 0.78);
-      grad.addColorStop(0, "#F1E9D2"); grad.addColorStop(0.42, "#EAE6D3"); grad.addColorStop(0.68, "#B7C9B1");
-      grad.addColorStop(0.88, "#6B8E7B"); grad.addColorStop(1, "#243B35");
+      grad.addColorStop(0, "#1f332d"); grad.addColorStop(0.45, "#162420"); grad.addColorStop(1, "#0E1714");   // dark forest
       g.fillStyle = grad; g.fillRect(0, 0, w, h);
     }, 1024, 640);
     scene.background = this.bg;
-    scene.fog = new THREE.Fog(0xdfe6d3, 9, 19);   // far dust fades into the mist
+    scene.fog = new THREE.Fog(0x0e1714, 9, 19);   // far dust fades into the dark
 
     const pmrem = new THREE.PMREMGenerator(r);
     this.env = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
@@ -79,12 +78,12 @@ export class PipelineScene {
 
     const key = new THREE.DirectionalLight(0xffe4bd, 1.5); key.position.set(3, 5, 4); scene.add(key);       // warm key
     const rim = new THREE.DirectionalLight(0xbcd6ff, 1.2); rim.position.set(-4, 2, -5); scene.add(rim);     // cool rim
-    scene.add(new THREE.HemisphereLight(0xf1e9d2, 0x243b35, 0.6));
+    scene.add(new THREE.HemisphereLight(0xdfe9dd, 0x0e1714, 0.5));
 
     // contact shadow: a blurred dark ellipse under the stack (no grid)
     const shadowTex = canvasTexture((g, w, h) => {
       const grad = g.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2);
-      grad.addColorStop(0, "rgba(36,59,53,0.55)"); grad.addColorStop(0.5, "rgba(36,59,53,0.22)"); grad.addColorStop(1, "rgba(36,59,53,0)");
+      grad.addColorStop(0, "rgba(4,8,7,0.7)"); grad.addColorStop(0.5, "rgba(4,8,7,0.3)"); grad.addColorStop(1, "rgba(4,8,7,0)");
       g.fillStyle = grad; g.fillRect(0, 0, w, h);
     }, 256, 256);
     this.shadow = new THREE.Mesh(new THREE.PlaneGeometry(5.2, 3.2), new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false, fog: false }));
@@ -202,12 +201,12 @@ export class PipelineScene {
     const edgeGeo = new THREE.EdgesGeometry(new THREE.BoxGeometry(W * 1.004, H * 1.004, DEPTH * 0.6));
     this.disposables.push(slabGeo, faceGeo, edgeGeo);
     faces.forEach((map, i) => {
-      const glass = new THREE.MeshPhysicalMaterial({ color: 0xf6f3ea, roughness: 0.18, metalness: 0, transmission: 0.55, thickness: 0.4,
+      const glass = new THREE.MeshPhysicalMaterial({ color: 0x22352f, roughness: 0.22, metalness: 0.1, transmission: 0.35, thickness: 0.4,
         ior: 1.4, clearcoat: 1, clearcoatRoughness: 0.12, transparent: true, opacity: 0.92, envMapIntensity: 0.55 });
       const slab = new THREE.Mesh(slabGeo, glass);
       const face = new THREE.Mesh(faceGeo, new THREE.MeshBasicMaterial({ map, transparent: true, toneMapped: false }));
       face.position.z = DEPTH / 2 + 0.004;
-      const edge = new THREE.LineSegments(edgeGeo, new THREE.LineBasicMaterial({ color: glow(C.mist, 1.1), transparent: true, opacity: 0.85, toneMapped: false }));
+      const edge = new THREE.LineSegments(edgeGeo, new THREE.LineBasicMaterial({ color: glow(C.sage, 1.9), transparent: true, opacity: 0.85, toneMapped: false }));
       slab.add(face, edge);
       slab.userData.layer = i; face.userData.layer = i;
       this.stack.add(slab);
@@ -345,7 +344,7 @@ export class PipelineScene {
         const k = 1 + focus * 0.05 + outro * (i === 4 ? 0.1 : 0);
         L.slab.scale.setScalar(L.slab.scale.x + (k - L.slab.scale.x) * 0.15);
         // edges: mist at rest, brighter on hover, defect on the focused layer, amber on the final card
-        const edgeCol = i === 4 && outro > 0.3 ? glow(C.amber, 2.4) : focus ? glow(C.defect, 2) : glow(C.mist, 1.1 + this.hoverAmt[i] * 1.2);
+        const edgeCol = i === 4 && outro > 0.3 ? glow(C.amber, 2.4) : focus ? glow(C.defect, 2.2) : glow(C.sage, 1.9 + this.hoverAmt[i] * 1.2);
         L.edge.material.color.copy(edgeCol);
         const fade = i < 4 ? 1 - outro : 1;            // the outro keeps only the last layer, as one glowing card
         L.face.material.opacity = (active < 0 || focus || s > 5.2 ? 1 : 0.6) * fade;
