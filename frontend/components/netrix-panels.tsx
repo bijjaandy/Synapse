@@ -243,8 +243,8 @@ export function SummaryView() {
         </dl>
         <h2 style={{ marginTop: 22 }}>Speed</h2>
         <dl className="summary-dl">
-          <div><dt>Average per photo</dt><dd>{s.avg_ms} ms</dd></div>
-          <div><dt>Slowest photo</dt><dd>{s.max_ms} ms <small className={s.max_ms < 1000 ? "ok" : "bad"}>{s.max_ms < 1000 ? "within the 1 s limit" : "over the 1 s limit"}</small></dd></div>
+          <div><dt>Average per photo</dt><dd>{Math.round(s.avg_ms)} ms</dd></div>
+          <div><dt>Slowest photo</dt><dd>{Math.round(s.max_ms)} ms <small className={s.max_ms < 1000 ? "ok" : "bad"}>{s.max_ms < 1000 ? "within the 1 s limit" : "over the 1 s limit"}</small></dd></div>
           <div><dt>Period</dt><dd>{s.first ? `${new Date(s.first * 1000).toLocaleString()} to ${new Date((s.last ?? s.first) * 1000).toLocaleString()}` : "—"}</dd></div>
         </dl>
       </section>

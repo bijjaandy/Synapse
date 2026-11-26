@@ -1709,3 +1709,6 @@ body { font-family:var(--font-ui); font-size:16px; }
 .mix-legend i { flex: none; }
 /* Toolbar: Stop takes the speaker button's place while an answer is read */
 .stop-speaking-tool { color: #E0B341; border-color: color-mix(in srgb, #E0B341 55%, transparent); }
+/* Stop reading (Ask Netrix): a clear button while an answer is read, never a faint label */
+.chat-card .stop-speaking { align-self: flex-start; margin: 2px 0 8px; color: #243B35; background: #F1E9D2; border: 1px solid #B07A10; font-weight: 600; }
+.chat-card .stop-speaking:hover { background: #E0B341; }
