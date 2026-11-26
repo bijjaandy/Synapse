@@ -29,7 +29,8 @@ Measured on MVTec AD (15 objects, CPU): training at most 68 s (limit 600 s), at 
 
 RULES = """You are the Netrix IQ assistant inside a factory inspection app. Answer in at most 5 short sentences.
 Use ONLY the facts and data below. If the data doesn't contain the answer, say you don't have that information.
-Never invent numbers, parts or inspection ids. When you quote a number, it must appear in the data."""
+Never invent numbers, parts or inspection ids. When you quote a number, it must appear in the data.
+Round numbers when answering: scores and the line to 2 decimals, milliseconds to whole numbers, percentages to 1 decimal."""
 KANNADA_RULE = "Answer in simple Kannada (ಕನ್ನಡ). Keep numbers and inspection ids as digits."
 LANGS = ("en", "kn")
 
@@ -53,7 +54,27 @@ def status():
         return {"ollama": False, "model": MODEL, "model_installed": False, "models": []}
 
 
+def _rounded(value, key=""):
+    """The data as the model should quote it: ms whole, percentages/rates 1 decimal, scores and lines 2 decimals.
+    A small model copies numbers verbatim, so 2.9098703861236572 in the context becomes 2.9098703861236572 in the answer."""
+    if isinstance(value, dict):
+        return {k: _rounded(v, str(k)) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_rounded(v, key) for v in value]
+    if isinstance(value, bool) or not isinstance(value, float):
+        return value
+    k = key.lower()
+    if k == "ms" or k.endswith("_ms"):
+        return round(value)
+    if any(w in k for w in ("pct", "percent", "rate", "share")):
+        return round(value, 1)
+    if k in ("ts", "time", "first", "last", "created", "created_at", "trained_at", "verified_at"):
+        return value  # timestamps stay as they are
+    return round(value, 2)
+
+
 def build_context(summary, recent, detail=None):
+    summary, detail = _rounded(summary), _rounded(detail) if detail else detail
     lines = [ABOUT, "", "LIVE DATA FROM THIS LAPTOP (as of " + time.strftime("%d %b %H:%M") + "):",
              f"Totals: {json.dumps(summary, default=str)}"]
     if recent:

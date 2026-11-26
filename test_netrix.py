@@ -334,3 +334,17 @@ def test_closest_good_is_the_photo_itself(netrix):
         assert r["closest_good"] == i, (i, r["closest_good"])
         img = c.get(f"/objects/closest_self/good/{i}.jpg")
         assert img.status_code == 200
+
+
+def test_assistant_context_rounds_numbers():
+    """The model copies numbers verbatim, so the context carries them already rounded."""
+    detail = {"id": 7, "score": 2.9098703861236572, "threshold": 1.9098758220672607, "ms": 472.9224999900907,
+              "defect_pct": 12.3456, "ts": 1764000000.123456}
+    summary = {"total": 3, "avg_ms": 193.4567, "by_object": [{"object": "Bottle", "max_ms": 621.8}]}
+    ctx = assistant.build_context(summary, [], detail)
+    for raw in ("2.9098703861236572", "1.9098758220672607", "472.92", "193.4567", "12.3456"):
+        assert raw not in ctx
+    for shown in ('"score": 2.91', '"threshold": 1.91', '"ms": 473', '"avg_ms": 193', '"max_ms": 622', '"defect_pct": 12.3'):
+        assert shown in ctx
+    assert "1764000000.123456" in ctx  # timestamps are left alone
+    assert "Round numbers" in assistant.RULES
