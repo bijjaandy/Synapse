@@ -3,6 +3,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { InspectionResult } from "@/lib/api";
 
 const KEY = "netrix.voice";
+// One "is something being read aloud" flag for the whole page: speech is global, so every panel's Stop/speaker
+// button must agree (the toolbar swaps its speaker icon for Stop while an AI answer is read).
+let speakingNow = false;
+const speakingListeners = new Set<(v: boolean) => void>();
+function setSpeakingShared(v: boolean) { if (v === speakingNow) return; speakingNow = v; speakingListeners.forEach((f) => f(v)); }
 const LANG_KEY = "netrix.lang";
 const LANG_EVENT = "netrix-lang";
 export type Lang = "en" | "kn";
@@ -89,7 +94,9 @@ export function useVoice() {
   const [on, setOn] = useState(true);
   const [supported, setSupported] = useState(false);
   const [lang] = useLang();
-  const [speaking, setSpeaking] = useState(false);
+  const [speaking, setSpeakingLocal] = useState(speakingNow);
+  useEffect(() => { speakingListeners.add(setSpeakingLocal); setSpeakingLocal(speakingNow); return () => { speakingListeners.delete(setSpeakingLocal); }; }, []);
+  const setSpeaking = setSpeakingShared;
   const [kannadaHint, setKannadaHint] = useState(false);
   useEffect(() => {
     setSupported(voiceSupported());
@@ -117,5 +124,16 @@ export function useVoice() {
   /** An AI answer: markdown stripped, read in the language it is written in (Kannada script needs a Kannada voice). */
   const sayAnswer = useCallback((text: string) => say(speakable(text), /[\u0C80-\u0CFF]/.test(text) ? "kn" : "en"), [say]);
   const stop = useCallback(() => { stopSpeaking(); setSpeaking(false); }, []);
+  // Some browsers never fire onend (no voice installed, speech blocked): once speech isn't actually running, clear the
+  // flag so a "Stop" button never lingers when nothing is being read.
+  useEffect(() => {
+    if (!speaking || !voiceSupported()) return;
+    const started = Date.now();
+    const timer = window.setInterval(() => {
+      const s = window.speechSynthesis;
+      if (Date.now() - started > 1200 && !s.speaking && !s.pending) setSpeaking(false);
+    }, 400);
+    return () => window.clearInterval(timer);
+  }, [speaking]);
   return { on, supported, toggle, announce, say, sayAnswer, stop, speaking, lang, kannadaHint, dismissKannadaHint: () => setKannadaHint(false) };
 }

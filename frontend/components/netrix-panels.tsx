@@ -5,10 +5,11 @@ import { useEffect, useRef, useState } from "react";
 import useSWR from "swr";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Bot, Check, CircleAlert, LoaderCircle, Send, ShieldCheck, Square, X } from "lucide-react";
-import { askAssistant, assistantStatus, loadSession, getSummary, getVerifyQueue, heatmapUrl, photoUrl, verifyInspection,
+import { askAssistant, assistantStatus, loadSession, getSummary, getVerifyQueue, gridUrl, heatmapUrl, photoUrl, verifyInspection,
          type ChatMessage, type QueueItem, type Summary, getInspectionTimes } from "@/lib/api";
 import { objectCategories } from "@/config/content";
 import { useLang, useVoice } from "@/lib/voice";
+import { heatOverlayUrl } from "@/lib/heatmaps";
 
 const partName = (id: string) => objectCategories.find((c) => c.id === id)?.name ?? id;
 
@@ -36,6 +37,27 @@ export function VerificationQueue() {
   </section>;
 }
 
+/** Photo + "where it differs" drawn with the same overlay as Inspect (clear where the part looks good).
+ *  Older checks without a stored photo show their saved heatmap full width; without a grid, the saved heatmap image. */
+function VerifyImages({ item }: { item: QueueItem }) {
+  const [overlay, setOverlay] = useState<string | null>(null);
+  useEffect(() => {
+    if (!item.has_photo || !item.has_grid) return;
+    let live = true;
+    fetch(gridUrl(item.id)).then((r) => (r.ok ? r.json() : null)).then((g: { grid: number[]; n: number } | null) => {
+      if (live && g?.grid?.length) setOverlay(heatOverlayUrl(g.grid, g.n, { size: 384 }));
+    }).catch(() => { /* keep the saved heatmap */ });
+    return () => { live = false; };
+  }, [item.id, item.has_photo, item.has_grid]);
+  if (item.has_photo === false)
+    return <div className="verify-images single"><figure><SafeImg src={heatmapUrl(item.id)} alt={`Heatmap of check #${item.id}`} /><figcaption>Where it differs · photo not stored for this older check</figcaption></figure></div>;
+  return <div className="verify-images">
+    <figure><SafeImg src={photoUrl(item.id)} alt={`Photo of check #${item.id}`} /><figcaption>Photo</figcaption></figure>
+    <figure>{overlay ? <div className="verify-overlay"><img src={photoUrl(item.id)} alt={`Check #${item.id} with the areas that differ highlighted`} /><img src={overlay} alt="" aria-hidden="true" className="verify-heat" /></div>
+      : <SafeImg src={heatmapUrl(item.id)} alt={`Heatmap of check #${item.id}`} />}<figcaption>Where it differs</figcaption></figure>
+  </div>;
+}
+
 function VerifyItem({ item, onDone }: { item: QueueItem; onDone: () => void }) {
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState<"good" | "defective" | null>(null);
@@ -47,10 +69,7 @@ function VerifyItem({ item, onDone }: { item: QueueItem; onDone: () => void }) {
     catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); setBusy(null); }
   }
   return <article className="verify-item">
-    <div className="verify-images">
-      <figure><SafeImg src={photoUrl(item.id)} alt={`Photo of check #${item.id}`} /><figcaption>Photo</figcaption></figure>
-      <figure><SafeImg src={heatmapUrl(item.id)} alt={`Heatmap of check #${item.id}`} /><figcaption>Where it differs</figcaption></figure>
-    </div>
+    <VerifyImages item={item} />
     <div className="verify-info">
       <h3>#{String(item.id).padStart(4, "0")} · {item.display_name ?? partName(item.object)}</h3>
       <p>Model said <b className={`tag-${item.label}`}>{item.label === "unsure" ? "Unsure" : "Defective"}</b> · score {item.score.toFixed(2)} against a line of {item.threshold.toFixed(2)} · {new Date(item.ts * 1000).toLocaleTimeString([], { hour12: false })}</p>
@@ -91,7 +110,7 @@ export function AskAiButton({ inspectionId, compact = false }: { inspectionId: n
       finally { setBusy(false); }
     }}>{busy ? <LoaderCircle size={13} className="spin" /> : <Bot size={compact ? 15 : 13} />}{compact ? null : " Ask AI why"}</button>
     {answer && <div className="ask-ai-popover"><p className="ask-ai-answer">{answer}</p><button type="button" className="ask-ai-close" aria-label="Close the answer" onClick={() => { setAnswer(null); voice.stop(); }}>×</button></div>}
-    {voice.speaking && <button type="button" className="layers-toggle stop-speaking" onClick={voice.stop}><Square size={11} /> Stop</button>}
+    {!compact && voice.speaking && <button type="button" className="layers-toggle stop-speaking" onClick={voice.stop}><Square size={11} /> Stop</button>}
   </div>;
 }
 
@@ -201,9 +220,9 @@ export function SummaryView() {
   if (error || !s) return <p className="netrix-error" role="alert"><CircleAlert size={15} /> {error?.message ?? "No summary available."}</p>;
   const pct = (n: number) => (s.total ? `${((n / s.total) * 100).toFixed(1)}%` : "0%");
   const kpis: [number | string, string, string][] = [
-    [s.total, "parts evaluated", ""], [s.counts.good, "good", pct(s.counts.good)], [s.counts.defective, "defective", pct(s.counts.defective)],
-    [s.counts.unsure, "sent to a person", pct(s.counts.unsure)], [s.counts.retake, "photo retakes", pct(s.counts.retake)],
-    [s.verification.pending, "waiting for verification", ""],
+    [s.total, "parts evaluated (all time)", ""], [s.counts.good, "good", pct(s.counts.good)], [s.counts.defective, "defective", pct(s.counts.defective)],
+    [s.counts.unsure, "marked unsure", pct(s.counts.unsure)], [s.counts.retake, "photo retakes", pct(s.counts.retake)],
+    [s.verification.pending, "waiting for verification", "unsure + defective, not yet checked"],
   ];
   return <div className="summary-view">
     <div className="summary-kpis">{kpis.map(([n, label, sub], i) => <motion.div key={label} className="netrix-card kpi" initial={reducedMotion ? false : { opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: reducedMotion ? 0 : i * 0.06 }}><strong>{typeof n === "number" ? <CountUp value={n} /> : n}</strong><span>{label}</span>{sub && <small>{sub}</small>}</motion.div>)}</div>
@@ -213,7 +232,7 @@ export function SummaryView() {
         {!s.by_object.length ? <p className="netrix-muted">No inspections yet.</p> : <table className="summary-table"><thead><tr><th>Part</th><th>Total</th><th>Result mix</th><th>Defective</th></tr></thead><tbody>
           {s.by_object.map((o) => <tr key={o.object}><td>{o.display_name ?? partName(o.object)}</td><td>{o.total}</td><td><div className="mix-bar" role="img" aria-label={`${o.good} good, ${o.defective} defective, ${o.unsure} unsure, ${o.retake} retakes`}>{(["good", "defective", "unsure", "retake"] as const).map((k) => o[k] ? <motion.span key={k} className={`mix-${k}`} style={{ width: `${(o[k] / o.total) * 100}%`, originX: 0 }} initial={reducedMotion ? false : { scaleX: 0 }} animate={{ scaleX: 1 }} transition={{ duration: reducedMotion ? 0 : 0.45, ease: [0.22, 1, 0.36, 1] }} /> : null)}</div></td><td>{o.defective} ({((o.defective / o.total) * 100).toFixed(0)}%)</td></tr>)}
         </tbody></table>}
-        <p className="mix-legend"><span className="mix-good" /> good <span className="mix-defective" /> defective <span className="mix-unsure" /> unsure <span className="mix-retake" /> retake</p>
+        <p className="mix-legend">{(["good", "defective", "unsure", "retake"] as const).map((k) => <span key={k}><i className={`mix-${k}`} aria-hidden="true" />{k}</span>)}</p>
       </section>
       <section className="netrix-card"><h2>People in the loop</h2>
         <dl className="summary-dl">

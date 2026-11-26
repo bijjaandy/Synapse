@@ -22,13 +22,14 @@ off until you retrain them with the same photos.
 
 | Page | Who can open it | What happens there |
 |---|---|---|
-| `/` landing | everyone | Scroll-driven 3D walk through the pipeline (photo → patches → memory → compare → decide), how it works, who it's for, measured numbers |
+| `/` landing | everyone | Dark-forest landing: isometric 3D hero (three.js + bloom), scroll-driven walk through the five layers of one inspection, what it checks, how it works, measured results |
 | `/login` | everyone | Who uses it and why; one-click demo logins |
-| `/dashboard` | Operator, QC Inspector, Supervisor | Train a part (upload or webcam) and inspect parts |
+| `/train` | Operator, QC Inspector, Supervisor | Products list, add photos (upload, folder, zip or webcam) with a photo-quality check, train |
+| `/inspect` | Operator, QC Inspector, Supervisor | Inspect from a photo, the webcam or conveyor mode: 3D view, 2D heatmap, layer map, closest good part, Ask AI why (`/dashboard` redirects here) |
 | `/evaluation` | QC Inspector, Supervisor | Human verification queue, the local AI assistant, and folder evaluation |
-| `/objects` | everyone signed in | Object library: every part and its model |
+| `/objects` | everyone signed in | Object library (grid or gallery): every product, its model, strictness, export/import, and a detail panel with its photos and numbers |
 | `/history` | everyone signed in | Inspection log, filters, CSV and shift report |
-| `/summary` | Supervisor | Total evaluated, results per part, people-in-the-loop numbers, speed |
+| `/summary` | Supervisor | All-time totals, inspections per hour, results per part, people-in-the-loop numbers, speed |
 
 Demo logins (created on first start in `users.json`, which is git-ignored; passwords are stored salted with PBKDF2):
 `operator / operator123`, `inspector / inspector123`, `supervisor / supervisor123`.
@@ -44,6 +45,32 @@ New endpoints: `DELETE /objects/{name}` (QC inspector or supervisor; `?purge_log
 (`good` also teaches the model), `GET /log/{id}/photo.jpg`, `GET /summary`, `GET /assistant/status`, `POST /assistant`.
 
 Browser test of all pages: start both servers, then `python netrix_ui_test.py --cleanup` (screenshots in `netrix_shots/`).
+
+### Newer features
+
+**Products.** A product has a name, an optional SKU and a description (`POST /products`, `PATCH /products/{id}` for QC
+inspectors and supervisors); its id comes from the name and never changes. *Export* downloads one zip with the model,
+`product.json` and the good photos (`GET /objects/{id}/export.zip`); *Import product* on another laptop accepts that zip
+(`POST /objects/import`, 409 if the id already exists).
+
+**Closest good part.** `/predict` also returns `closest_good`, the index of the training photo nearest to this one. On
+Inspect, *Compare with closest good part* (2D view) shows both side by side; the photo comes from
+`GET /objects/{name}/good/{index}.jpg`.
+
+**Ask AI why and Kannada.** After an inspection, the robot button asks the local assistant to explain that inspection
+(operators get the answer in place; QC inspectors and supervisors open Evaluation). Answers can be read aloud; while one
+is being read, the speaker button turns into *Stop*. The EN / ಕನ್ನಡ switch in the top bar sets the spoken verdicts and
+the assistant's language. The backend sends the assistant numbers already rounded (scores and the line to 2 decimals,
+ms whole, percentages to 1 decimal) and its rules tell it to round too.
+
+**Verification with the same heatmap.** Each logged inspection now also stores its score grid
+(`logs/grids/<id>.json`, served at `GET /log/{id}/grid.json`), so the Evaluation queue draws *Where it differs* with
+the same overlay as Inspect (clear where the part looks good). Older checks without a stored photo show their saved
+heatmap full width with "photo not stored for this older check". `/verify/queue` items carry `has_photo` and `has_grid`.
+
+**Demo quick-load.** With *Bottle* selected under Inspect → Upload, *Try a good sample* / *Try a defective sample*
+inspect `frontend/public/demo/bottle_good.jpg` / `bottle_defect.jpg` (a training photo, and the same photo with a drawn
+crack) through the normal path, so they are logged like an upload.
 
 ### Line features
 
@@ -144,6 +171,14 @@ it is not a 3D scan of the part's real shape. The webcam only works on `http://l
 | GET  | /log, /log.csv, /log/{id}/heatmap.png | inspection log (filters `object`, `hours`) |
 | GET  | /report, /report.html | shift summary as JSON, or a printable page |
 | PUT  | /objects/{name}/strictness | JSON `{"factor": 0.8..1.25}`, QC inspector or supervisor; line = threshold / factor (see Strictness per part) |
+| GET  | /objects/{name}/stats | inspections, result mix, defect rate, average and slowest ms for one part |
+| GET  | /objects/{name}/good/{index}.jpg | one training photo (the `closest_good` from /predict) |
+| POST, PATCH | /products, /products/{id} | new product / edit its name, SKU or description |
+| GET, POST | /objects/{id}/export.zip, /objects/import | move a product (model + photos) to another laptop |
+| GET  | /log/{id}/photo.jpg, /log/{id}/grid.json | the stored photo and score grid of one inspection |
+| GET, POST | /verify/queue, /verify/{id} | QC verification queue (`has_photo`, `has_grid`) and the final call |
+| GET  | /summary | all-time totals, per part, people in the loop, speed |
+| GET, POST | /assistant/status, /assistant | local AI status and questions |
 
 Object names: lowercase letters, digits, `_` or `-`. Models are saved in `models/`, uploaded photos in `data/`,
 the inspection log and its heatmaps in `logs/`.

@@ -1671,3 +1671,41 @@ body { font-family:var(--font-ui); font-size:16px; }
 
 /* App views already sit in a centred 1180px shell, so the viewport-based gutter must not pad them again (it squeezed Inspect to ~400px at 1920 wide). */
 .lab-view { --content-gutter: 0px; }
+/* Part C: demo quick-load for the bottle */
+.demo-samples { display: flex; gap: 8px; flex-wrap: wrap; }
+.demo-sample { flex: 1 1 0; min-height: 36px; padding: 6px 10px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--forest) 30%, transparent); background: transparent; color: var(--forest); font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.demo-sample:hover:not(:disabled) { background: color-mix(in srgb, var(--forest) 8%, transparent); }
+.demo-sample:disabled { opacity: .5; cursor: default; }
+.demo-sample-defect { border-color: color-mix(in srgb, #C2571A 55%, transparent); color: #8f3d10; }
+/* Object detail panel: solid dark glass over a dimmed page, so no page text shows through */
+.glass-backdrop { background: rgba(6, 12, 10, 0.72); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+.glass-panel { background: linear-gradient(160deg, rgba(29, 50, 44, 0.97), rgba(16, 28, 24, 0.97)); border: 1px solid rgba(183, 201, 177, 0.28);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(241, 233, 210, 0.08); color: #F1E9D2;
+  backdrop-filter: blur(24px) saturate(130%); -webkit-backdrop-filter: blur(24px) saturate(130%); }
+.glass-panel h3 { color: #F1E9D2; }
+.glass-close { background: rgba(241, 233, 210, 0.08); border-color: rgba(183, 201, 177, 0.4); color: #F1E9D2; }
+.glass-close:hover { background: rgba(241, 233, 210, 0.16); }
+.glass-close:focus-visible { outline: 2px solid #E0B341; outline-offset: 2px; }
+.glass-main { background: rgba(241, 233, 210, 0.06); }
+.glass-placeholder { color: #F1E9D2; opacity: .75; }
+.glass-thumbs button.active { border-color: #E0B341; }
+.glass-stats dl > div { border-bottom-color: rgba(183, 201, 177, 0.16); }
+.glass-stats dt { opacity: 1; color: #B7C9B1; }
+.glass-mix { background: rgba(241, 233, 210, 0.1); }
+.glass-mix .mix-good, .glass-counts .mix-good { background: #7FA898; }
+.glass-mix .mix-defective, .glass-counts .mix-defective { background: #D9692B; }
+.glass-mix .mix-unsure, .glass-counts .mix-unsure { background: #E0B341; }
+.glass-mix .mix-retake, .glass-counts .mix-retake { background: #9aa0a8; }
+@supports not (backdrop-filter: blur(1px)) { .glass-panel { background: #172923; } }
+/* Verification: same heat overlay as Inspect; older checks without a photo show the heatmap full width */
+.verify-images.single { grid-template-columns: 1fr; }
+.verify-images.single img, .verify-images.single .img-missing { aspect-ratio: 16 / 9; object-fit: contain; }
+.verify-overlay { position: relative; aspect-ratio: 1; border-radius: 10px; overflow: hidden; background: var(--mist); }
+.verify-overlay img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: 0; background: none; }
+.verify-overlay .verify-heat { mix-blend-mode: normal; opacity: .9; image-rendering: auto; }
+/* 2D heatmap: the decorative corner brackets read as stray dots at the image corners; the result view doesn't need them */
+.result-panel .corner-frame::before, .result-panel .corner-frame::after { display: none; }
+/* Summary "By part" legend: real colour swatches */
+.mix-legend i { flex: none; }
+/* Toolbar: Stop takes the speaker button's place while an answer is read */
+.stop-speaking-tool { color: #E0B341; border-color: color-mix(in srgb, #E0B341 55%, transparent); }

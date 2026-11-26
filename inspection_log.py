@@ -1,5 +1,6 @@
 """Audit trail: every inspection is stored in SQLite, with its heatmap, for CSV export and shift reports."""
 import csv
+import json
 import io
 import sqlite3
 import threading
@@ -18,6 +19,8 @@ class InspectionLog:
         self.heatmaps.mkdir(parents=True, exist_ok=True)
         self.photos = self.folder / "photos"   # originals, so a QC inspector can verify later
         self.photos.mkdir(parents=True, exist_ok=True)
+        self.grids = self.folder / "grids"     # the score grid, so later views can draw the same overlay as Inspect
+        self.grids.mkdir(parents=True, exist_ok=True)
         self.db = self.folder / "inspections.db"
         self.lock = threading.Lock()
         with self._conn() as c:
@@ -34,7 +37,7 @@ class InspectionLog:
         c.row_factory = sqlite3.Row
         return c
 
-    def add(self, obj, label, score, threshold, ms, backbone, reasons, heatmap_png, photo_jpg=None):
+    def add(self, obj, label, score, threshold, ms, backbone, reasons, heatmap_png, photo_jpg=None, grid=None):
         with self.lock, self._conn() as c:
             cur = c.execute("INSERT INTO inspections (ts, object, label, score, threshold, ms, backbone, reasons) "
                             "VALUES (?,?,?,?,?,?,?,?)",
@@ -44,7 +47,13 @@ class InspectionLog:
             (self.heatmaps / f"{rid}.png").write_bytes(heatmap_png)
         if photo_jpg:
             (self.photos / f"{rid}.jpg").write_bytes(photo_jpg)
+        if grid:
+            (self.grids / f"{rid}.json").write_text(json.dumps(grid), encoding="utf-8")
         return rid
+
+    def grid_path(self, rid):
+        p = self.grids / f"{int(rid)}.json"
+        return p if p.exists() else None
 
     def photo_path(self, rid):
         p = self.photos / f"{int(rid)}.jpg"
@@ -62,7 +71,11 @@ class InspectionLog:
             q += " AND object=?"; args.append(obj)
         q += " ORDER BY id ASC LIMIT ?"; args.append(int(limit))
         with self._conn() as c:
-            return [dict(r) for r in c.execute(q, args)]
+            rows = [dict(r) for r in c.execute(q, args)]
+        for r in rows:  # older checks were logged without the photo or the grid
+            r["has_photo"] = (self.photos / f"{r['id']}.jpg").exists()
+            r["has_grid"] = (self.grids / f"{r['id']}.json").exists()
+        return rows
 
     def verify(self, rid, decision, by, note=""):
         """A QC inspector's final call: 'good' or 'defective'."""
@@ -125,6 +138,7 @@ class InspectionLog:
         for rid in ids:
             (self.heatmaps / f"{rid}.png").unlink(missing_ok=True)
             (self.photos / f"{rid}.jpg").unlink(missing_ok=True)
+            (self.grids / f"{rid}.json").unlink(missing_ok=True)
         return len(ids)
 
     def heatmap_path(self, rid):

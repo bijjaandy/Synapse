@@ -66,7 +66,7 @@ export const limitationCopy = [
   "Textures (wood, leather) get the most false alarms; “This was actually good” fixes each one instantly.",
   "Screw is the weakest object (accuracy 0.70): tiny defects on a part that lies at any angle.",
 ] as const;
-export const teamNamePlaceholder = "[Team name]";
+export const teamNamePlaceholder = "CodeStorm";
 export const hackathonName = "Synapse 2.0";
 export const trainingBudgetSeconds = 600;
 export const navigationItems = [

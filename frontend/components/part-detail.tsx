@@ -66,8 +66,8 @@ export function PartDetailPanel({ id, name, open, onClose }: { id: string; name:
   const statRows: [string, string][] = stats ? [
     ["Inspections", String(stats.total)],
     ["Defect rate", `${(stats.defect_rate * 100).toFixed(1)}%`],
-    ["Average", `${stats.avg_ms} ms`],
-    ["Slowest", `${stats.max_ms} ms`],
+    ["Average", `${Math.round(stats.avg_ms)} ms`],
+    ["Slowest", `${Math.round(stats.max_ms)} ms`],
     ["Last inspected", when(stats.last)],
   ] : [];
 

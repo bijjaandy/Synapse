@@ -361,9 +361,10 @@ export async function logout() {
   saveSession(null);
 }
 
-export type QueueItem = { id: number; ts: number; object: string; display_name?: string; label: string; score: number; threshold: number; ms: number; reasons: string };
+export type QueueItem = { id: number; ts: number; object: string; display_name?: string; label: string; score: number; threshold: number; ms: number; reasons: string; has_photo?: boolean; has_grid?: boolean };
 export const photoUrl = (id: number) => `${API_URL}/log/${id}/photo.jpg`;
 export const heatmapUrl = (id: number) => `${API_URL}/log/${id}/heatmap.png`;
+export const gridUrl = (id: number) => `${API_URL}/log/${id}/grid.json`;
 
 export async function getVerifyQueue(): Promise<QueueItem[]> {
   return call<QueueItem[]>("/verify/queue?limit=100", { headers: authHeaders() });

@@ -52,6 +52,10 @@ def test_verification_queue_and_summary(netrix):
     h, _ = login(c, "inspector", "inspector123")
     q = c.get("/verify/queue", headers=h).json()
     assert [r["id"] for r in q] == [bad["inspection_id"], bad2["inspection_id"]]
+    assert all(r["has_photo"] and r["has_grid"] for r in q)
+    g = c.get(f"/log/{bad['inspection_id']}/grid.json").json()  # Evaluation draws the Inspect overlay from this
+    assert g["n"] == bad["grid_size"] and g["grid"] == bad["grid"]
+    assert c.get("/log/999999/grid.json").status_code == 404
     r = c.post(f"/verify/{bad['inspection_id']}", json={"decision": "defective", "note": "crack on rim"}, headers=h).json()
     assert r == {"id": bad["inspection_id"], "decision": "defective", "by": "inspector", "model_learned": False}
     r = c.post(f"/verify/{bad2['inspection_id']}", json={"decision": "good"}, headers=h).json()

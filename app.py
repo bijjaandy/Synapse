@@ -349,7 +349,8 @@ def predict(name: str, file: UploadFile = File(...), heatmap: bool = True, log: 
         img.save(jb, format="JPEG", quality=88)
         photo = jb.getvalue()
     out["inspection_id"] = inspection_log.add(name, r["label"], r["score"], m.thr, r["ms"], m.fx.name,
-                                              r["reasons"], png, photo) if log else None
+                                              r["reasons"], png, photo,
+                                              {"grid": r["grid"], "n": r["grid_size"]}) if log else None
     if heatmap:
         out["heatmap_png_base64"] = base64.b64encode(png).decode()
     return out
@@ -771,6 +772,15 @@ def verify_queue(object: str | None = None, limit: int = 50, who: dict = Depends
     if object:
         check_name(object)
     return with_names(inspection_log.queue(object, max(1, min(limit, 200))))
+
+
+@app.get("/log/{rid}/grid.json")
+def log_grid(rid: int):
+    """The score grid of a logged inspection ({grid, n}), so Evaluation draws the same overlay as Inspect."""
+    p = inspection_log.grid_path(rid)
+    if not p:
+        raise HTTPException(404, "no score grid stored for that inspection")
+    return FileResponse(p, media_type="application/json")
 
 
 @app.get("/log/{rid}/photo.jpg")
